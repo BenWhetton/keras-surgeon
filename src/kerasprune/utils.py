@@ -1,9 +1,8 @@
-import keras
 
 
 def _check_valid_layer(layer):
     # Checks that this functionality has been implemented for the weighted layers' classes.
-    if not isinstance(layer, (keras.layers.Conv2D, keras.layers.Dense)):
+    if layer.__class__.__name__ in ('Conv2D', 'Dense'):
         assert ValueError('This functionality is only implemented for Conv2D and Dense layers.')
 
 

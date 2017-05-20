@@ -1,6 +1,5 @@
-import keras
+"""This module contains methods to prune models."""
 import numpy as np
-from keras.models import Sequential
 from kerasprune.utils import find_layers
 
 # This module provides methods to prune keras models.
@@ -8,7 +7,7 @@ from kerasprune.utils import find_layers
 
 
 def delete_channels(model, layer_index, delete_channels_index):
-    """Delete one or more channels from a model.
+    """Delete one or more channels (units or filters) from a layer.
     Any weights associated with the deleted channel in its layer and all layers downstream of it are deleted.
     All other weights in the model are preserved.
     
@@ -45,9 +44,9 @@ def delete_channels(model, layer_index, delete_channels_index):
 
     # Remove the units from the model config and initialise the new model
     model_config = model.get_config()
-    if isinstance(model.layers[layer_index], keras.layers.convolutional.Conv2D):
+    if model.layers[layer_index].__class__.__name__ == 'Conv2D':
         model_config[layer_index]['config']['filters'] -= len(delete_channels_index)
-    elif isinstance(model.layers[layer_index], keras.layers.core.Dense):
+    elif model.layers[layer_index].__class__.__name__ == 'Dense':
         model_config[layer_index]['config']['units'] -= len(delete_channels_index)
     else:
         raise TypeError('This function has only been implemented for convolutional and dense layers.')
@@ -74,11 +73,11 @@ def delete_channels(model, layer_index, delete_channels_index):
 
 def _check_valid_layer(layer):
     """Check that this library has been implemented the layer's class."""
-    if not isinstance(layer, (keras.layers.Conv2D,
-                              keras.layers.Dense,
-                              keras.layers.MaxPool2D,
-                              keras.layers.Activation,
-                              keras.layers.Flatten)):
+    if layer.__class__.__name__ in ('Conv2D',
+                                    'Dense',
+                                    'MaxPool2D',
+                                    'Activation',
+                                    'Flatten'):
         assert ValueError('This library has not yet been implemented for ', type(layer), ' layers.')
 
 
@@ -109,14 +108,14 @@ def _delete_input_weights(layer,
 
 
 def _get_channels_axis(layer):
-    if isinstance(layer, keras.layers.convolutional.Conv2D):
+    if layer.__class__.__name__ == 'Conv2D':
         if layer.get_config()['data_format'] == 'channels_first':
             input_channels_axis = 0
             output_channels_axis = 1
         else:
             input_channels_axis = -2
             output_channels_axis = -1
-    elif isinstance(layer, keras.layers.core.Dense):
+    elif layer.__class__.__name__ == 'Dense':
         input_channels_axis = 0
         output_channels_axis = -1
     else:
@@ -134,7 +133,7 @@ def _get_weights_transformation(model, layer_index, next_layer_index):
     reverse_transform_function = []
     next_layer_weights_shape = model.layers[next_layer_index].get_weights()[0].shape
     for i, layer in enumerate(model.layers[layer_index+1:next_layer_index]):
-        if isinstance(layer, keras.layers.core.Flatten):
+        if layer.__class__.__name__ == 'Flatten':
             transform_function.append(lambda x: np.reshape(x, list(layer.input_shape[1:]) + [-1]))
             reverse_transform_function.append(lambda x: np.reshape(x, [-1] + [next_layer_weights_shape[-1]]))
 
@@ -142,9 +141,9 @@ def _get_weights_transformation(model, layer_index, next_layer_index):
 
 
 def _get_number_channels(layer):
-    if isinstance(layer, keras.layers.convolutional.Conv2D):
+    if layer.__class__.__name__ == 'Conv2D':
         return layer.get_config()['filters']
-    elif isinstance(layer, keras.layers.core.Dense):
+    elif layer.__class__.__name__ == 'Dense':
         return layer.get_config()['units']
     else:
         raise TypeError('This function has only been implemented for convolutional and dense layers.')
