@@ -4,3 +4,4 @@
 src/kerasprune.egg-info
 tests/__pycache__
 *.pyc
+tempData
