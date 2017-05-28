@@ -2,6 +2,7 @@ import pytest
 import numpy as np
 
 from kerasprune.prune import delete_channels
+from kerasprune.prune import rebuild_sequential
 
 
 @pytest.fixture
@@ -58,6 +59,10 @@ def test_delete_channel_conv2d_dense(model_1):
     new_weights = new_model.layers[layer_index + 2].get_weights()
     assert np.array_equal(np.delete(weights[0], slice(0, None, 2), axis=0), new_weights[0])
     assert np.array_equal(weights[1], new_weights[1])
+
+def test_rebuild_sequential(model_1):
+    new_model = rebuild_sequential(model_1)
+
 
 
 if __name__ == '__main__':

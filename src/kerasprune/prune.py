@@ -177,3 +177,154 @@ def _get_number_channels(layer):
     else:
         raise TypeError('This function has only been implemented for '
                         'convolutional and dense layers.')
+
+
+# check if layer weights are empty, if they are, check layer type and add relevant transforms and reverse transforms to the lamda list and call
+def layer_recurse(layer):
+    if not layer.weights:
+        # Add transforms and reverse transforms depending on layer type
+        1
+    else:
+        1
+        # apply transforms
+        # delete weights
+        # apply reverse transforms
+        # assign new weights to layer
+
+# for each depth level, for each layer, instantiate them wrt previous layers. store new outputs in dict.
+
+def rebuild_model(input_layer):
+    for node in input_layer.outbound_nodes:
+        node.output_layer(input_layer.output)
+        rebuild_model(node)
+    return
+
+
+def rebuild_sequential(model):
+    from keras.models import Model, Sequential
+    temp_model = Sequential.from_config(model.get_config())
+    temp_model.set_weights(model.get_weights())
+    layer = temp_model.layers[0]
+    first_input = layer.input
+    input_tensor = first_input
+
+    # next_input = layer(input)
+    while layer.outbound_nodes:
+        # While the layer contains outbound nodes
+        # Loop invariant: "input_tensor" is the output of the n-1th layer.
+        # "layer" is the nth layer
+        # The layers up to layer n-1 have been connected in sequence
+        input_tensor = layer(input_tensor)
+        layer = layer.outbound_nodes[0].outbound_layer
+
+    return Model(inputs=first_input, outputs=layer(input_tensor))
+
+
+def rebuild_sequential2(model):
+    from keras.models import Sequential
+
+    layers = []
+    weights = []
+    # next_input = layer(input)
+    for layer in model.layers:
+        layers.append(type(layer).from_config(layer.get_config()))
+        weights.append(layer.get_weights())
+
+    new_model = Sequential(layers=layers)
+    for i, layer in enumerate(new_model.layers):
+        layer.set_weights(weights[i])
+
+    return new_model
+
+
+def rebuild_sequential_rec(model):
+    from keras.models import Model
+    input_layer = model.layers[1]
+    input_tensor = input_layer.input
+    output_tensor = _rebuild_sequential_rec(input_tensor, input_layer)
+    return Model(inputs=input_tensor, outputs=output_tensor)
+
+
+def _rebuild_sequential_rec(input, layer):
+    next_input = layer(input)
+    if not layer.outbound_nodes:
+        return next_input
+    next_layer = layer.outbound_nodes[0].outbound_layer
+    next_input = _rebuild_sequential_rec(next_input, next_layer)
+    return next_input
+
+
+def rebuild(model):
+    """Rebuild the model"""
+    from keras.models import Model
+    model_inputs = model.inputs
+    finished_nodes = set()
+    # find the previous layers connecting to this layer.
+
+    def _rebuild_rec(layer, node_index):
+        """Rebuilds the instance of this layer and all deeper layers, recursively.
+        
+        Calculates the output tensor by applying this layer to this node.
+        All tensors deeper in the network are also calculated
+        
+        Args:
+            layer: the layer to rebuild
+            node_index: The index of the next inbound node in the network. 
+                        The layer will be called on the output of this node to 
+                        obtain the output.
+                        inbound_node = layer.inbound_nodes[node_index].
+        Returns:
+            The output of the layer when called on the output of the inbound node.
+                             
+        """
+        ###print('getting inputs for: ', layer.name)
+        # get the inbound node
+        inbound_node = layer.inbound_nodes[node_index]
+        if inbound_node in finished_nodes:
+            output = layer.get_output_at(node_index)
+            return output
+
+        inbound_layers = inbound_node.inbound_layers
+        inbound_node_indices = inbound_node.node_indices
+        # find this layer's inbound layer(s) recursively.
+        inputs = []
+        ###print('inbound_layers: ', inbound_layers)
+        for inbound_layer, inbound_node_index in zip(inbound_layers,
+                                                     inbound_node_indices):
+            if not inbound_layer:
+                ###print('bottomed out to an unknown input')
+                raise ValueError
+            elif inbound_layer.get_output_at(inbound_node_index) \
+                    in model_inputs:
+                ###print('bottomed out')
+                inputs.append(inbound_layer.get_output_at(inbound_node_index))
+            else:
+                inputs.append(_rebuild_rec(inbound_layer, inbound_node_index))
+        # call this layer on the outputs of the inbound layers
+        ###print("inputs: ", inputs)
+        if len(inputs) == 1:
+            output = layer(inputs[0])
+        else:
+            output = layer(inputs)
+        finished_nodes.add(inbound_node)
+        return output
+        # if the previous layer is empty, bottom out
+
+    new_model_outputs = []
+    for output_layer, output_layer_node_index in \
+            zip(model.output_layers, model.output_layers_node_indices):
+        new_model_outputs.append(_rebuild_rec(output_layer,
+                                              output_layer_node_index))
+
+    new_model = Model(model_inputs, new_model_outputs)
+
+    return new_model
+
+# recursively explore the tree from outputs to inputs,
+
+
+
+
+# def delete_layer(model, layer_name):
+#     find
+#     return Model(inputs = inputs)
