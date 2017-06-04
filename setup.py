@@ -5,7 +5,7 @@ from setuptools import find_packages
 
 setup(
     name='kerasprune',
-    version="0",
+    version="0.0.0a1",
     url='',
     license='MIT',
     description='A library for pruning channels/neurons from trained Keras models '
