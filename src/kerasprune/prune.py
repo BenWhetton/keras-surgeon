@@ -130,16 +130,23 @@ def _delete_input_weights(layer,
 
 
 def _get_channels_axis(layer):
-    if layer.__class__.__name__ == 'Conv2D':
+    layer_class = layer.__class__.__name__
+    if layer_class == 'Conv2D':
         if layer.get_config()['data_format'] == 'channels_first':
             input_channels_axis = 0
             output_channels_axis = 1
         else:
             input_channels_axis = -2
             output_channels_axis = -1
-    elif layer.__class__.__name__ == 'Dense':
+
+    elif layer_class == 'Dense':
         input_channels_axis = 0
         output_channels_axis = -1
+
+    elif  layer_class in ('InputLayer', 'Flatten'):
+        input_channels_axis = None
+        output_channels_axis = None
+
     else:
         raise TypeError('This function has only been implemented for '
                         'convolutional and dense layers.')
@@ -445,12 +452,23 @@ def delete_channels_rec(model, layer, channels_index, node_index=None, copy=None
                                          output_axis)
     layer_config = layer.get_config()
     if 'units' in layer_config.keys():
-        layer_config['units'] -= len(channels_index)
+        channels_string = 'units'
     elif 'filters' in layer_config.keys():
-        layer_config['filters'] -= len(channels_index)
+        channels_string = 'filters'
+        # layer_config['filters'] -= len(channels_index)
+        # if any([index > layer_config['units'] for index in channels_index]):
+        #     raise ValueError('Channels index value(s) are out of range. '
+        #                      'This layer only has {0} units'
+        #                      .format(layer_config['units']))
     else:
         raise ValueError('The layer must have either a "units" or "filters" '
                          'property to be able to delete channels.')
+
+    if any([index+1 > layer_config[channels_string] for index in channels_index]):
+        raise ValueError('Channels index value(s) are out of range. '
+                         'This layer only has {0} units'
+                         .format(layer_config[channels_string]))
+    layer_config[channels_string] -= len(channels_index)
 
     new_layer = type(layer).from_config(layer_config)
 
@@ -517,47 +535,66 @@ def rebuild_submodel_transform(model_inputs,
         logging.debug('getting inputs for: {0}'.format(layer.name))
         # get the inbound node
         inbound_node = layer.inbound_nodes[node_index]
+        layer_output = layer.get_output_at(node_index)
         if inbound_node in finished_outputs.keys():
             logging.debug('reached finished node: {0}'.format(inbound_node))
             return finished_outputs[inbound_node]
 
-        inbound_layers = inbound_node.inbound_layers
-        inbound_node_indices = inbound_node.node_indices
-        # find this layer's inputs recursively.
-        # find the transforms leading from the input to this layer recursively.
-        inputs = []
-        delete_masks = []
-        logging.debug('inbound_layers: {0}'.format(inbound_layers))
-        for inbound_layer, inbound_node_index in zip(inbound_layers,
-                                                     inbound_node_indices):
-            inbound_layer_output = \
-                inbound_layer.get_output_at(inbound_node_index)
-            if not inbound_layer:
-                logging.debug('bottomed out to an unknown input')
-                raise ValueError
-            elif inbound_layer_output in model_inputs:
-                logging.debug('bottomed out at a model input')
-                output = inbound_layer_output
-                delete_mask = input_delete_masks[
-                    model_inputs.index(inbound_layer_output)]
-            elif inbound_layer_output in replace_inputs.keys():
-                logging.debug('bottomed out at replaced output: {0}'.format(
-                    inbound_layer_output))
-                output, delete_mask = replace_inputs[inbound_layer_output]
+        elif not layer:
+            logging.debug('bottomed out to an unknown input')
+            raise ValueError
 
-            else:
+        elif layer_output in model_inputs:
+            logging.debug('bottomed out at a model input')
+            delete_mask = input_delete_masks[
+                model_inputs.index(layer_output)]
+            return layer_output, delete_mask
+
+        elif layer_output in replace_inputs.keys():
+            logging.debug('bottomed out at replaced output: {0}'.format(
+                layer_output))
+            output, delete_mask = replace_inputs[layer_output]
+            return output, delete_mask
+
+        else:
+            inbound_layers = inbound_node.inbound_layers
+            inbound_node_indices = inbound_node.node_indices
+            # find this layer's inputs recursively.
+            # find the transforms leading from the input to this layer recursively.
+            inputs = []
+            delete_masks = []
+            logging.debug('inbound_layers: {0}'.format([layer.name for layer in inbound_layers]))
+            for inbound_layer, inbound_node_index in zip(inbound_layers,
+                                                         inbound_node_indices):
+                # inbound_layer_output = \
+                #     inbound_layer.get_output_at(inbound_node_index)
+                # if not inbound_layer:
+                #     logging.debug('bottomed out to an unknown input')
+                #     raise ValueError
+                # elif inbound_layer_output in model_inputs:
+                #     logging.debug('bottomed out at a model input')
+                #     output = inbound_layer_output
+                #     delete_mask = input_delete_masks[
+                #         model_inputs.index(inbound_layer_output)]
+                # elif inbound_layer_output in replace_inputs.keys():
+                #     logging.debug('bottomed out at replaced output: {0}'.format(
+                #         inbound_layer_output))
+                #     output, delete_mask = replace_inputs[inbound_layer_output]
+                #
+                # else:
                 output, delete_mask = _rebuild_rec(inbound_layer,
-                                                    inbound_node_index)
-            inputs.append(output)
-            delete_masks.append(delete_mask)
-        # call this layer on the outputs of the inbound layers
-        if len(inputs) == 1:
-            inputs = inputs[0]
-        if len(delete_masks) == 1:
-            delete_masks = delete_masks[0]
-        output, delete_mask = apply_layer_delete_mask(layer, inputs, delete_masks)
-        finished_outputs[inbound_node] = [output, delete_mask]
-        return output, delete_mask
+                                                        inbound_node_index)
+                inputs.append(output)
+                delete_masks.append(delete_mask)
+            # call this layer on the outputs of the inbound layers
+            if len(inputs) == 1:
+                inputs = inputs[0]
+            if len(delete_masks) == 1:
+                delete_masks = delete_masks[0]
+            output, delete_mask = apply_layer_delete_mask(layer, inputs, delete_masks)
+            finished_outputs[inbound_node] = [output, delete_mask]
+            logging.debug('layer complete: {0}'.format(layer.name))
+            return output, delete_mask
 
     new_model_outputs = []
     output_delete_masks = []
@@ -572,13 +609,13 @@ def rebuild_submodel_transform(model_inputs,
 def apply_layer_delete_mask(layer, inputs, input_delete_masks):
     # if delete_mask is None, the deleted channels do not affect this layer or
     # any layers above it
-    new_weights = None
+    [channels_axis, _] = _get_channels_axis(layer)
     if input_delete_masks is not None:
         # otherwise, delete_mask.shape should be: layer.input_shape[1:]
         layer_class = layer.__class__.__name__
-        if layer_class == 'Input':
+        if layer_class == 'InputLayer':
             raise RuntimeError('This should never get here!')
-            output_delete_mask = np.zeros(layer.output_shape[1:], dtype=bool)
+            # output_delete_mask = np.zeros(layer.output_shape[1:], dtype=bool)
 
         elif layer_class == 'Dense':
             new_layer = type(layer).from_config(layer.get_config())
@@ -600,6 +637,28 @@ def apply_layer_delete_mask(layer, inputs, input_delete_masks):
         elif layer_class == 'Flatten':
             output_delete_mask = np.reshape(input_delete_masks, [-1, ])
             output = layer(inputs)
+
+        elif layer_class == 'Conv2D':
+            # trim down the size of the input_delete_masks
+            if layer.data_format == 'channels_first':
+                input_delete_masks = input_delete_masks[:, :layer.kernel_size[0], :layer.kernel_size[1]]
+            elif layer.data_format == 'channels_last':
+                input_delete_masks = input_delete_masks[:layer.kernel_size[0], :layer.kernel_size[1], :]
+            weights = layer.get_weights()
+            full_delete_mask = np.repeat(
+                np.expand_dims(np.invert(input_delete_masks), axis=3),
+                weights[0].shape[3], axis=3)
+            new_layer = type(layer).from_config(layer.get_config())
+            new_weights = weights
+            new_shape = list(new_weights[0].shape)
+            new_shape[channels_axis] = -1
+            weights_pruned = new_weights[0][full_delete_mask]
+            weights_reshaped = np.reshape(weights_pruned, new_shape)
+            new_weights[0] = weights_reshaped
+            layer = new_layer
+            output = layer(inputs)
+            layer.set_weights(new_weights)
+            output_delete_mask = np.zeros(layer.output_shape[1:], dtype=bool)
 
         else:
             raise ValueError('"{0}" layers are currently '
