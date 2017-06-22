@@ -83,7 +83,7 @@ def test_rebuild(model_2):
     new_model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
     loss = model_2.evaluate(mnist.validation.images, mnist.validation.labels, 128)
     loss2 = model_2.evaluate(mnist.validation.images, mnist.validation.labels, 128)
-    assert np.array_equal(loss, loss2)
+    assert np.allclose(loss, loss2, atol=1e-6)
 
 
 def test_delete_channels_rec_1():

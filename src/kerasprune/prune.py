@@ -5,7 +5,8 @@ import logging
 from kerasprune.utils import find_layers
 from keras.models import Model
 # TODO: Add conditional statements for layer option use_bias=False.
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
+
 
 def delete_channels(model, layer_index, channels_index):
     """Delete one or more channels (units or filters) from a layer.
@@ -202,23 +203,6 @@ def rebuild_sequential(model):
         layer.set_weights(weights[i])
 
     return new_model
-
-
-def rebuild_sequential_rec(model):
-    from keras.models import Model
-    input_layer = model.layers[1]
-    input_tensor = input_layer.input
-    output_tensor = _rebuild_sequential_rec(input_tensor, input_layer)
-    return Model(inputs=input_tensor, outputs=output_tensor)
-
-
-def _rebuild_sequential_rec(input, layer):
-    next_input = layer(input)
-    if not layer.outbound_nodes:
-        return next_input
-    next_layer = layer.outbound_nodes[0].outbound_layer
-    next_input = _rebuild_sequential_rec(next_input, next_layer)
-    return next_input
 
 
 def replace_layer_instance(model, layer, new_layer, node_index=None, copy=True):
@@ -436,9 +420,8 @@ def delete_channels_rec(model, layer, channels_index, node_index=None, copy=None
     inbound_layers = inbound_node.inbound_layers
     inbound_node_indices = inbound_node.node_indices
 
-    logging.debug(
-        'rebuilding model up to the layer before the insertion: {0}'.format(
-            layer))
+    logging.debug('rebuilding model up to the layer before the insertion: '
+                  '{0}'.format(layer))
     input_delete_masks = [np.zeros(node.outbound_layer.input_shape[1:],
                                    dtype=bool) for node in model.inbound_nodes]
     inbound_layers_outputs, _, finished_outputs = rebuild_submodel_transform(model_inputs,
@@ -566,24 +549,8 @@ def rebuild_submodel_transform(model_inputs,
             logging.debug('inbound_layers: {0}'.format([layer.name for layer in inbound_layers]))
             for inbound_layer, inbound_node_index in zip(inbound_layers,
                                                          inbound_node_indices):
-                # inbound_layer_output = \
-                #     inbound_layer.get_output_at(inbound_node_index)
-                # if not inbound_layer:
-                #     logging.debug('bottomed out to an unknown input')
-                #     raise ValueError
-                # elif inbound_layer_output in model_inputs:
-                #     logging.debug('bottomed out at a model input')
-                #     output = inbound_layer_output
-                #     delete_mask = input_delete_masks[
-                #         model_inputs.index(inbound_layer_output)]
-                # elif inbound_layer_output in replace_inputs.keys():
-                #     logging.debug('bottomed out at replaced output: {0}'.format(
-                #         inbound_layer_output))
-                #     output, delete_mask = replace_inputs[inbound_layer_output]
-                #
-                # else:
                 output, delete_mask = _rebuild_rec(inbound_layer,
-                                                        inbound_node_index)
+                                                   inbound_node_index)
                 inputs.append(output)
                 delete_masks.append(delete_mask)
             # call this layer on the outputs of the inbound layers
@@ -591,7 +558,8 @@ def rebuild_submodel_transform(model_inputs,
                 inputs = inputs[0]
             if len(delete_masks) == 1:
                 delete_masks = delete_masks[0]
-            output, delete_mask = apply_layer_delete_mask(layer, inputs, delete_masks)
+            new_layer, delete_mask = apply_layer_delete_mask(layer, delete_masks)
+            output = new_layer(inputs)
             finished_outputs[inbound_node] = [output, delete_mask]
             logging.debug('layer complete: {0}'.format(layer.name))
             return output, delete_mask
@@ -606,59 +574,58 @@ def rebuild_submodel_transform(model_inputs,
     return new_model_outputs, output_delete_masks, finished_outputs
 
 
-def apply_layer_delete_mask(layer, inputs, input_delete_masks):
+def apply_layer_delete_mask(layer, inbound_delete_masks):
+    """Apply the inbound delete mask and return the outbound delete mask"""
     # if delete_mask is None, the deleted channels do not affect this layer or
     # any layers above it
     [channels_axis, _] = _get_channels_axis(layer)
-    if input_delete_masks is not None:
+    if inbound_delete_masks is not None:
         # otherwise, delete_mask.shape should be: layer.input_shape[1:]
         layer_class = layer.__class__.__name__
         if layer_class == 'InputLayer':
             raise RuntimeError('This should never get here!')
-            # output_delete_mask = np.zeros(layer.output_shape[1:], dtype=bool)
 
         elif layer_class == 'Dense':
-            new_layer = type(layer).from_config(layer.get_config())
             weights = layer.get_weights()
             new_weights = weights
-            # logging.debug('mask: {0}'.format(input_delete_masks))
-            # keep_mask = np.dstack([np.logical_not(input_delete_masks)] * weights[0].shape[-1]).squeeze()
-            # keep_mask_slice = np.logical_not(input_delete_masks)
-            # keep_mask = np.repeat(keep_mask_slice.reshape(list(keep_mask_slice.shape) + [1]), weights[0].shape[-1], axis=new_weights[0].ndim-1)
-            new_weights[0] = new_weights[0][np.where(input_delete_masks == False)[0], :]
-            # new_weights.append(weights[0][input_delete_masks, :])
-            # new_weights.append(weights[1])
-            # new_layer.set_weights(new_weights)
-            layer = new_layer
-            output = layer(inputs)
-            layer.set_weights(new_weights)
-            output_delete_mask = np.zeros(layer.output_shape[1:], dtype=bool)
+            new_weights[0] = new_weights[0][np.where(inbound_delete_masks == False)[0], :]
+            config = layer.get_config()
+            config['weights'] = new_weights
+            new_layer = type(layer).from_config(config)
+            outbound_delete_mask = np.zeros(layer.output_shape[1:], dtype=bool)
 
         elif layer_class == 'Flatten':
-            output_delete_mask = np.reshape(input_delete_masks, [-1, ])
-            output = layer(inputs)
+            outbound_delete_mask = np.reshape(inbound_delete_masks, [-1, ])
+            new_layer = layer
 
         elif layer_class == 'Conv2D':
-            # trim down the size of the input_delete_masks
+            # outbound delete mask set to ones no downstream layers are affected
+            outbound_delete_mask = np.zeros(layer.output_shape[1:], dtype=bool)
+            # Conv layer: trim down inbound_delete_masks to filter shape
+            k_size = layer.kernel_size
             if layer.data_format == 'channels_first':
-                input_delete_masks = input_delete_masks[:, :layer.kernel_size[0], :layer.kernel_size[1]]
+                inbound_delete_masks = inbound_delete_masks[:,
+                                                            :k_size[0],
+                                                            :k_size[1]]
             elif layer.data_format == 'channels_last':
-                input_delete_masks = input_delete_masks[:layer.kernel_size[0], :layer.kernel_size[1], :]
+                inbound_delete_masks = inbound_delete_masks[:k_size[0],
+                                                            :k_size[1],
+                                                            :]
+            # Delete unused weights to obtain new_weights
             weights = layer.get_weights()
             full_delete_mask = np.repeat(
-                np.expand_dims(np.invert(input_delete_masks), axis=3),
+                np.expand_dims(np.invert(inbound_delete_masks), axis=3),
                 weights[0].shape[3], axis=3)
-            new_layer = type(layer).from_config(layer.get_config())
             new_weights = weights
             new_shape = list(new_weights[0].shape)
             new_shape[channels_axis] = -1
             weights_pruned = new_weights[0][full_delete_mask]
             weights_reshaped = np.reshape(weights_pruned, new_shape)
             new_weights[0] = weights_reshaped
-            layer = new_layer
-            output = layer(inputs)
-            layer.set_weights(new_weights)
-            output_delete_mask = np.zeros(layer.output_shape[1:], dtype=bool)
+            # Instantiate new layer with new_weights
+            config = layer.get_config()
+            config['weights'] = new_weights
+            new_layer = type(layer).from_config(config)
 
         else:
             raise ValueError('"{0}" layers are currently '
@@ -667,9 +634,10 @@ def apply_layer_delete_mask(layer, inputs, input_delete_masks):
         # if layer_class == 'MaxPool2D':
         #     delete_mask = delete_mask
     else:
-        output_delete_mask = None
+        new_layer = layer
+        outbound_delete_mask = None
 
-    return output, output_delete_mask
+    return new_layer, outbound_delete_mask
 
 
 def rebuild(model, copy=True):
@@ -689,8 +657,11 @@ def rebuild(model, copy=True):
         return new_model
 
 
-def rebuild_submodel(model_inputs, output_layers, output_layers_node_indices,
-                     replace_inputs=None, finished_outputs=None):
+def rebuild_submodel(model_inputs,
+                     output_layers,
+                     output_layers_node_indices,
+                     replace_inputs=None,
+                     finished_outputs=None):
     """Rebuild the model"""
     if not finished_outputs:
         finished_outputs = {}
