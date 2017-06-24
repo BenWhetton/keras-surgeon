@@ -3,7 +3,6 @@ import numpy as np
 
 from kerasprune.prune import delete_channels
 from kerasprune.prune import rebuild_sequential
-from kerasprune.prune import rebuild
 from kerasprune import prune
 
 
@@ -30,67 +29,65 @@ def model_2():
     return Model(model.inputs, model.outputs)
 
 
-def test_delete_channel_conv2d_conv2d(model_1):
-    layer_index = 0
-    channels_index = [0]
-    new_model = delete_channels(model_1, layer_index, channels_index)
-    weights = model_1.layers[layer_index].get_weights()
-    new_weights = new_model.layers[layer_index].get_weights()
-    assert np.array_equal(weights[0][:, :, :, 1:], new_weights[0])
-    assert np.array_equal(weights[1][1:], new_weights[1])
-    weights = model_1.layers[layer_index+1].get_weights()
-    new_weights = new_model.layers[layer_index+1].get_weights()
-    assert np.array_equal(weights[0][:, :, 1:, :], new_weights[0])
-    assert np.array_equal(weights[1], new_weights[1])
-
-
-def test_delete_channel_dense_dense(model_1):
-    layer_index = 3
-    channels_index = [0]
-    new_model = delete_channels(model_1, layer_index, channels_index)
-    weights = model_1.layers[layer_index].get_weights()
-    new_weights = new_model.layers[layer_index].get_weights()
-    assert np.array_equal(weights[0][:, 1:], new_weights[0])
-    assert np.array_equal(weights[1][1:], new_weights[1])
-    weights = model_1.layers[layer_index+1].get_weights()
-    new_weights = new_model.layers[layer_index + 1].get_weights()
-    assert np.array_equal(weights[0][1:, :], new_weights[0])
-    assert np.array_equal(weights[1], new_weights[1])
-
-
-def test_delete_channel_conv2d_dense(model_1):
-    layer_index = 1
-    channels_index = [0]
-    new_model = delete_channels(model_1, layer_index, channels_index)
-    weights = model_1.layers[layer_index].get_weights()
-    new_weights = new_model.layers[layer_index].get_weights()
-    assert np.array_equal(weights[0][:, :, :, 1:], new_weights[0])
-    assert np.array_equal(weights[1][1:], new_weights[1])
-    weights = model_1.layers[layer_index+2].get_weights()
-    new_weights = new_model.layers[layer_index + 2].get_weights()
-    assert np.array_equal(np.delete(weights[0], slice(0, None, 2), axis=0), new_weights[0])
-    assert np.array_equal(weights[1], new_weights[1])
+# def test_delete_channel_conv2d_conv2d(model_1):
+#     layer_index = 0
+#     channels_index = [0]
+#     new_model = delete_channels(model_1, model_1.layers[layer_index], channels_index)
+#     weights = model_1.layers[layer_index].get_weights()
+#     new_weights = new_model.layers[layer_index].get_weights()
+#     assert np.array_equal(weights[0][:, :, :, 1:], new_weights[0])
+#     assert np.array_equal(weights[1][1:], new_weights[1])
+#     weights = model_1.layers[layer_index+1].get_weights()
+#     new_weights = new_model.layers[layer_index+1].get_weights()
+#     assert np.array_equal(weights[0][:, :, 1:, :], new_weights[0])
+#     assert np.array_equal(weights[1], new_weights[1])
+#
+#
+# def test_delete_channel_dense_dense(model_1):
+#     layer_index = 3
+#     channels_index = [0]
+#     new_model = delete_channels(model_1, layer_index, channels_index)
+#     weights = model_1.layers[layer_index].get_weights()
+#     new_weights = new_model.layers[layer_index].get_weights()
+#     assert np.array_equal(weights[0][:, 1:], new_weights[0])
+#     assert np.array_equal(weights[1][1:], new_weights[1])
+#     weights = model_1.layers[layer_index+1].get_weights()
+#     new_weights = new_model.layers[layer_index + 1].get_weights()
+#     assert np.array_equal(weights[0][1:, :], new_weights[0])
+#     assert np.array_equal(weights[1], new_weights[1])
+#
+#
+# def test_delete_channel_conv2d_dense(model_1):
+#     layer_index = 1
+#     channels_index = [0]
+#     new_model = delete_channels(model_1, layer_index, channels_index)
+#     weights = model_1.layers[layer_index].get_weights()
+#     new_weights = new_model.layers[layer_index].get_weights()
+#     assert np.array_equal(weights[0][:, :, :, 1:], new_weights[0])
+#     assert np.array_equal(weights[1][1:], new_weights[1])
+#     weights = model_1.layers[layer_index+2].get_weights()
+#     new_weights = new_model.layers[layer_index + 2].get_weights()
+#     assert np.array_equal(np.delete(weights[0], slice(0, None, 2), axis=0), new_weights[0])
+#     assert np.array_equal(weights[1], new_weights[1])
 
 
 def test_rebuild_sequential(model_1):
-    new_model = rebuild_sequential(model_1)
+    new_model = rebuild_sequential(model_1.layers)
 
 
-def test_rebuild(model_2):
-    from tensorflow.examples.tutorials.mnist import input_data
-    model_2.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
-    mnist = input_data.read_data_sets('tempData', one_hot=True, reshape=False)
-    new_model = rebuild(model_2)
-    new_model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
-    loss = model_2.evaluate(mnist.validation.images, mnist.validation.labels, 128)
-    loss2 = model_2.evaluate(mnist.validation.images, mnist.validation.labels, 128)
-    assert np.allclose(loss, loss2, atol=1e-6)
+def test_rebuild_submodel(model_2):
+    from keras.models import Model
+    new_model_outputs, _, _ = prune.rebuild_submodel(model_2.inputs,
+                                                     model_2.output_layers,
+                                                     model_2.output_layers_node_indices)
+    new_model = Model(model_2.inputs, new_model_outputs)
+    assert compare_models(model_2, new_model)
 
 
 def test_delete_channels_rec_1():
     from keras.layers import Input, Dense
     from keras.models import Model
-    from kerasprune.prune import delete_channels_rec
+    from kerasprune.prune import delete_channels
     inputs = Input(shape=(784,))
     x = Dense(64, activation='relu')(inputs)
     x = Dense(64, activation='relu')(x)
@@ -100,7 +97,7 @@ def test_delete_channels_rec_1():
     model.compile(optimizer='rmsprop',
                   loss='categorical_crossentropy',
                   metrics=['accuracy'])
-    new_model = delete_channels_rec(model, model.layers[2], [0])
+    new_model = delete_channels(model, model.layers[2], [0])
 
 
 @pytest.fixture
@@ -146,10 +143,10 @@ def model_3():
     # pytest.param("6*9", 42, marks=pytest.mark.xfail),
 ])
 def test_delete_channels_rec_conv2d_conv2d(model_3, channel_index):
-    from kerasprune.prune import delete_channels_rec
+    from kerasprune.prune import delete_channels
     layer_index = 1
     # next_layer_index = 2
-    new_model = delete_channels_rec(model_3,
+    new_model = delete_channels(model_3,
                                     model_3.layers[layer_index],
                                     channel_index,
                                     copy=True)
@@ -167,10 +164,10 @@ def test_delete_channels_rec_conv2d_conv2d(model_3, channel_index):
     [0, 1]
 ])
 def test_delete_channels_rec_conv2d_conv2d_next_layer(model_3, channel_index):
-    from kerasprune.prune import delete_channels_rec
+    from kerasprune.prune import delete_channels
     layer_index = 1
     next_layer_index = 2
-    new_model = delete_channels_rec(model_3,
+    new_model = delete_channels(model_3,
                                     model_3.layers[layer_index],
                                     channel_index)
     w = model_3.layers[next_layer_index].get_weights()
@@ -208,12 +205,7 @@ def test_delete_layer():
     delete_layer_index = 5
     model_2 = prune.delete_layer(model_1, model_1.layers[delete_layer_index])
     # Compare the modified model with the expected modified model
-    config = model_2.get_config()
-    config_exp = model_2_exp.get_config()
-    config_exp['name'] = config['name']
-    assert(config == config_exp)
-    assert(all([np.array_equal(weight, weight_exp) for (weight, weight_exp) in
-                zip(model_2.get_weights(), model_2_exp.get_weights())]))
+    assert (compare_models(model_2, model_2_exp))
 
 
 def test_delete_layer_reuse():
@@ -244,12 +236,7 @@ def test_delete_layer_reuse():
     model_2 = prune.delete_layer(model_1, model_1.layers[delete_layer_index],
                                  copy=False)
     # Compare the modified model with the expected modified model
-    config = model_2.get_config()
-    config_exp = model_2_exp.get_config()
-    config_exp['name'] = config['name']
-    assert (config == config_exp)
-    assert (all([np.array_equal(weight, weight_exp) for (weight, weight_exp) in
-                 zip(model_2.get_weights(), model_2_exp.get_weights())]))
+    assert (compare_models(model_2, model_2_exp))
 
 
 def test_replace_layer():
@@ -276,12 +263,18 @@ def test_replace_layer():
     layer_index = 2
     model_2 = prune.replace_layer(model_1, model_1.layers[layer_index], dense_3)
     # Compare the modified model with the expected modified model
-    config = model_2.get_config()
-    config_exp = model_2_exp.get_config()
-    config_exp['name'] = config['name'] # make the config names identical
-    assert(config == config_exp)
-    assert(all([np.array_equal(weight, weight_exp) for (weight, weight_exp) in
-                zip(model_2.get_weights(), model_2_exp.get_weights())]))
+    assert(compare_models(model_2, model_2_exp))
+
+
+def compare_models(model_1, model_2):
+    config_1 = model_1.get_config()
+    config_2 = model_2.get_config()
+    config_2['name'] = config_1['name']  # make the config names identical
+    config_match = (config_1 == config_2)
+    weights_match = (all([np.array_equal(weight_1, weight_2)
+                          for (weight_1, weight_2) in
+                          zip(model_1.get_weights(), model_2.get_weights())]))
+    return config_match and weights_match
 # def delete_conv2d_filters(model, layer):
 #     return model
 #
