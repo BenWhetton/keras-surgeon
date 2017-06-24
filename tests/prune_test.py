@@ -183,6 +183,8 @@ def weights_equal(w1, w2):
     else:
         return all([np.array_equal(w1[i], w2[i]) for i in range(len(w1))])
 
+# TODO: Add tests for flatten layer
+
 
 def test_delete_layer():
     from keras.layers import Input, Dense, Conv2D, MaxPool2D, Flatten
@@ -205,7 +207,7 @@ def test_delete_layer():
     delete_layer_index = 5
     model_2 = prune.delete_layer(model_1, model_1.layers[delete_layer_index])
     # Compare the modified model with the expected modified model
-    assert (compare_models(model_2, model_2_exp))
+    assert compare_models(model_2, model_2_exp)
 
 
 def test_delete_layer_reuse():
@@ -236,7 +238,7 @@ def test_delete_layer_reuse():
     model_2 = prune.delete_layer(model_1, model_1.layers[delete_layer_index],
                                  copy=False)
     # Compare the modified model with the expected modified model
-    assert (compare_models(model_2, model_2_exp))
+    assert compare_models(model_2, model_2_exp)
 
 
 def test_replace_layer():
@@ -259,11 +261,40 @@ def test_replace_layer():
     output_2 = dense_4(x)
     model_2_exp = prune.clean_copy(Model(inputs=input_1, outputs=output_2))
 
-    # Delete the layer
+    # Replase dense_2 with dense_3 in model_1
     layer_index = 2
     model_2 = prune.replace_layer(model_1, model_1.layers[layer_index], dense_3)
     # Compare the modified model with the expected modified model
-    assert(compare_models(model_2, model_2_exp))
+    assert compare_models(model_2, model_2_exp)
+
+
+def test_insert_layer():
+    from keras.layers import Input, Dense, Conv2D, MaxPool2D, Flatten
+    from keras.models import Model
+    # Create all model layers
+    input_1 = Input(shape=[7, 7, 1])
+    dense_1 = Dense(3)
+    dense_2 = Dense(3)
+    dense_3 = Dense(3)
+    dense_4 = Dense(1)
+    # Create the model and expected modified model
+    x = dense_1(input_1)
+    x = dense_2(x)
+    output_1 = dense_4(x)
+    model_1 = prune.clean_copy(Model(inputs=input_1, outputs=output_1))
+
+    x = dense_1(input_1)
+    x = dense_2(x)
+    x = dense_3(x)
+    output_2 = dense_4(x)
+    model_2_exp = prune.clean_copy(Model(inputs=input_1, outputs=output_2))
+
+    # Replase dense_2 with dense_3 in model_1
+    layer_index = 3
+    model_2 = prune.insert_layer(model_1, model_1.layers[layer_index],
+                                 dense_3)
+    # Compare the modified model with the expected modified model
+    assert compare_models(model_2, model_2_exp)
 
 
 def compare_models(model_1, model_2):
