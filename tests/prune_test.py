@@ -4,6 +4,8 @@ import numpy as np
 from kerasprune.prune import delete_channels
 from kerasprune.prune import rebuild_sequential
 from kerasprune import prune
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 
 @pytest.fixture
@@ -303,6 +305,39 @@ def test_insert_layer():
                                  dense_3)
     # Compare the modified model with the expected modified model
     assert compare_models(model_2, model_2_exp)
+
+
+def test_delete_layer_same_layer_outputs():
+    from keras.layers import Input, Dense, Conv2D, MaxPool2D, Flatten, Concatenate
+    from keras.models import Model
+    input_1 = Input(shape=(10,))
+    input_2 = Input(shape=(11,))
+    dense_1 = Dense(3)
+    dense_2 = Dense(3)
+    dense_3 = Dense(3)
+    dense_4 = Dense(1)
+
+    x = dense_1(input_1)
+    y = dense_2(x)
+    x = dense_3(x)
+    output_1 = dense_4(x)
+    output_2 = dense_4(y)
+    model_1 = prune.clean_copy(Model(inputs=input_1, outputs=[output_1, output_2]))
+
+    x = dense_1(input_1)
+    y = dense_2(x)
+    # x = dense_3(x)
+    output_1 = dense_4(x)
+    output_2 = dense_4(y)
+    model_2_exp = prune.clean_copy(
+        Model(inputs=input_1, outputs=[output_1, output_2]))
+
+    model_2 = prune.delete_layer(model_1, model_1.get_layer(dense_3.name), copy=False)
+
+    # Compare the modified model with the expected modified model
+    assert compare_models(model_2, model_2_exp)
+
+
 
 
 def compare_models(model_1, model_2):

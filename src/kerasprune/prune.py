@@ -60,7 +60,7 @@ def rebuild_submodel(model_inputs,
         """
         logging.debug('getting inputs for: {0}'.format(layer.name))
         # get the inbound node
-        inbound_node = layer.inbound_nodes[node_index]
+        node = layer.inbound_nodes[node_index]
         layer_output = layer.get_output_at(node_index)
         if layer_output in replace_tensors.keys():
             # Check for replaced tensors first to ensure that they are not
@@ -70,9 +70,9 @@ def rebuild_submodel(model_inputs,
             output, outbound_mask = replace_tensors[layer_output]
             return output, outbound_mask
 
-        elif inbound_node in finished_nodes.keys():
-            logging.debug('reached finished node: {0}'.format(inbound_node))
-            return finished_nodes[inbound_node]
+        elif node in finished_nodes.keys():
+            logging.debug('reached finished node: {0}'.format(node))
+            return finished_nodes[node]
 
         elif not layer:
             logging.debug('bottomed out to an unknown input')
@@ -85,40 +85,27 @@ def rebuild_submodel(model_inputs,
             return layer_output, outbound_mask
 
         else:
-            inbound_layers = inbound_node.inbound_layers
-            inbound_node_indices = inbound_node.node_indices
-            # Recursively find this layer's inputs and inbound masks from each
+            inbound_layers = node.inbound_layers
+            inbound_node_indices = node.node_indices
+            # Recursively find this layer's inputs and input masks from each
             # inbound layer at this inbound node
-            inputs = []
-            delete_masks = []
             logging.debug('inbound_layers: {0}'.format([layer.name for layer in
                                                         inbound_layers]))
-            for inbound_layer, inbound_node_index in zip(inbound_layers,
-                                                         inbound_node_indices):
-                output, outbound_mask = _rebuild_rec(inbound_layer,
-                                                     inbound_node_index)
-                inputs.append(output)
-                delete_masks.append(outbound_mask)
+            inputs, input_masks = zip(*[_rebuild_rec(l, i) for l, i in zip(
+                inbound_layers, inbound_node_indices)])
             # Apply the delete masks to this layer
-            new_layer, outbound_mask = _apply_delete_mask(layer, delete_masks)
+            new_layer, outbound_mask = _apply_delete_mask(layer, input_masks)
             # Call this layer on its inputs at the inbound node
-            if len(inputs) == 1:
-                inputs = inputs[0]
-            output = new_layer(inputs)
-            # Add this inbound_node's outputs to the finished outputs lists
-            finished_nodes[inbound_node] = (output, outbound_mask)
+            output = new_layer(extract_if_single_element(inputs))
+            # Add this node's outputs to the finished outputs lists
+            finished_nodes[node] = (output, outbound_mask)
             logging.debug('layer complete: {0}'.format(layer.name))
             return output, outbound_mask
 
-    new_submodel_outputs = []
-    output_delete_masks = []
-    for output_layer, output_layer_node_index in \
-            zip(output_layers, output_layers_node_indices):
-        submodel_output, delete_mask = _rebuild_rec(output_layer,
-                                                    output_layer_node_index)
-        new_submodel_outputs.append(submodel_output)
-        output_delete_masks.append(delete_mask)
-    return new_submodel_outputs, output_delete_masks, finished_nodes
+    submodel_outputs, output_masks = zip(*[_rebuild_rec(l, i) for l, i in
+                                           zip(
+        output_layers, output_layers_node_indices)])
+    return submodel_outputs, output_masks, finished_nodes
 
 
 def _apply_delete_mask(layer, inbound_delete_masks):
@@ -184,12 +171,15 @@ def _apply_delete_mask(layer, inbound_delete_masks):
     return new_layer, outbound_delete_mask
 
 
-def check_for_layer_reuse(model):
+def check_for_layer_reuse(model, layers=None):
     """Returns True if any layers are reused, False if not."""
-    for layer in model.layers:
-        if len(layer.inbound_nodes) > 1:
-            return True
-    return False
+    if layers is None:
+        layers = model.layers
+    return any([len(l.inbound_nodes) > 1 for l in layers])
+    # for layer in layers:
+    #     if len(layer.inbound_nodes) > 1:
+    #         return True
+    # return False
 
 
 def clean_copy(model):
@@ -403,7 +393,7 @@ def reused_core_logic(model, layer, modifier_function, node_indices=None, copy=N
     for node_index in sorted_indices:
         # Rebuild the model up to layer instance
         inbound_node = layer.inbound_nodes[node_index]
-        submodel_output_layers = inbound_node.inbound_layers
+        submodel_output_layers = inbound_node.inbound_layers  # TODO: Consider removing these variables, here for readability purposes only
         submodel_output_layer_node_indices = inbound_node.node_indices
 
         logging.debug('rebuilding model up to the layer before the insertion: '
