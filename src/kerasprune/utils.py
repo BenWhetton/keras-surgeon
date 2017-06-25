@@ -34,3 +34,14 @@ def find_activation_layer(model, layer_index):
     return activation_layer
 
 
+def sort_x_by_y(x, y):
+    """Sort the iterable x by the order of iterable y"""
+    x = [x for (_, x) in sorted(zip(y, x))]
+    return x
+
+
+def extract_if_single_element(x):
+    """If x contains a single element, return it; otherwise return x"""
+    if len(x) == 1:
+        x = x[0]
+    return x

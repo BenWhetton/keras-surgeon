@@ -1,8 +1,14 @@
 """Prune connections or whole neurons from Keras model layers."""
 
-import numpy as np
 import logging
+
+import numpy as np
 from keras.models import Model
+
+from kerasprune.model_utils import clean_copy, get_node_depth, \
+    check_for_layer_reuse
+from kerasprune.utils import sort_x_by_y, extract_if_single_element
+
 logging.basicConfig(level=logging.INFO)
 
 
@@ -166,44 +172,6 @@ def _apply_delete_mask(layer, inbound_delete_masks):
     return new_layer, outbound_delete_mask
 
 
-def check_for_layer_reuse(model, layers=None):
-    """Returns True if any layers are reused, False if not."""
-    if layers is None:
-        layers = model.layers
-    return any([len(l.inbound_nodes) > 1 for l in layers])
-    # for layer in layers:
-    #     if len(layer.inbound_nodes) > 1:
-    #         return True
-    # return False
-
-
-def clean_copy(model):
-    """Returns a copy of the model without other model uses of its layers."""
-    weights = model.get_weights()
-    new_model = Model.from_config(model.get_config())
-    new_model.set_weights(weights)
-    return new_model
-
-
-def get_node_depth(model, node):
-    """Get the depth of a node in a model.
-
-    Arguments:
-        model: Keras Model object
-        node: Keras Node object
-
-    Returns:
-        The node depth as an integer. The model outputs are at depth 0.
-
-    Raises:
-        KeyError: if the node is not contained in the model.
-    """
-    for (depth, nodes_at_depth) in model.nodes_by_depth.items():
-        if node in nodes_at_depth:
-            return depth
-    raise KeyError('The node is not contained in the model.')
-
-
 def insert_layer(model, layer, new_layer, node_indices=None, copy=True):
     """Insert new_layer before layer at node_indices.
 
@@ -319,10 +287,10 @@ def delete_layer(model, layer, node_indices=None, copy=True):
 
 def delete_channels(model, layer, channel_indices, node_indices=None, copy=None):
     # Delete the channels in layer to create new_layer
-    new_layer = delete_channel_weights(layer, channel_indices)
+    new_layer = _delete_channel_weights(layer, channel_indices)
 
     # Create the mask for determining the weights to delete in shallower layers
-    new_delete_mask = make_delete_mask(layer, channel_indices)
+    new_delete_mask = _make_delete_mask(layer, channel_indices)
 
     # initialise the delete masks for the model input
     input_delete_masks = [np.ones(node.outbound_layer.input_shape[1:],
@@ -419,20 +387,7 @@ def reused_core_logic(model, layer, modifier_function, node_indices=None, copy=N
         return new_model
 
 
-def sort_x_by_y(x, y):
-    """Sort the iterable x by the order of iterable y"""
-    x = [x for (_, x) in sorted(zip(y, x))]
-    return x
-
-
-def extract_if_single_element(x):
-    """If x contains a single element, return it; otherwise return x"""
-    if len(x) == 1:
-        x = x[0]
-    return x
-
-
-def make_delete_mask(layer, channel_indices):
+def _make_delete_mask(layer, channel_indices):
     """Make the boolean delete mask for layer's output deleting channels.
     The mask is used to index the weights of the following layers to remove
     weights previously linked to channels which have been deleted.
@@ -458,7 +413,7 @@ def make_delete_mask(layer, channel_indices):
     return new_delete_mask
 
 
-def delete_channel_weights(layer, channel_indices):
+def _delete_channel_weights(layer, channel_indices):
     """Delete channels from layer and remove un-used weights.
 
     Arguments:

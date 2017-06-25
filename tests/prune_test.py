@@ -1,6 +1,7 @@
 import pytest
 import numpy as np
 
+import kerasprune.model_utils
 from kerasprune.prune import delete_channels
 from kerasprune.prune import rebuild_sequential
 from kerasprune import prune
@@ -211,8 +212,8 @@ def test_delete_layer():
     # Create the model and expected modified model
     output_1 = dense_4(dense_3(dense_2(dense_1(flatten_1(conv2d_2(conv2d_1(input_1)))))))
     output_2 = dense_4(dense_3(dense_1(flatten_1(conv2d_2(conv2d_1(input_1))))))
-    model_1 = prune.clean_copy(Model(inputs=input_1, outputs=output_1))
-    model_2_exp = prune.clean_copy(Model(inputs=input_1, outputs=output_2))
+    model_1 = kerasprune.model_utils.clean_copy(Model(inputs=input_1, outputs=output_1))
+    model_2_exp = kerasprune.model_utils.clean_copy(Model(inputs=input_1, outputs=output_2))
     # Delete the layer
     delete_layer_index = 5
     model_2 = prune.delete_layer(model_1, model_1.layers[delete_layer_index])
@@ -264,12 +265,12 @@ def test_replace_layer():
     x = dense_1(input_1)
     x = dense_2(x)
     output_1 = dense_4(x)
-    model_1 = prune.clean_copy(Model(inputs=input_1, outputs=output_1))
+    model_1 = kerasprune.model_utils.clean_copy(Model(inputs=input_1, outputs=output_1))
 
     x = dense_1(input_1)
     x = dense_3(x)
     output_2 = dense_4(x)
-    model_2_exp = prune.clean_copy(Model(inputs=input_1, outputs=output_2))
+    model_2_exp = kerasprune.model_utils.clean_copy(Model(inputs=input_1, outputs=output_2))
 
     # Replase dense_2 with dense_3 in model_1
     layer_index = 2
@@ -291,13 +292,13 @@ def test_insert_layer():
     x = dense_1(input_1)
     x = dense_2(x)
     output_1 = dense_4(x)
-    model_1 = prune.clean_copy(Model(inputs=input_1, outputs=output_1))
+    model_1 = kerasprune.model_utils.clean_copy(Model(inputs=input_1, outputs=output_1))
 
     x = dense_1(input_1)
     x = dense_2(x)
     x = dense_3(x)
     output_2 = dense_4(x)
-    model_2_exp = prune.clean_copy(Model(inputs=input_1, outputs=output_2))
+    model_2_exp = kerasprune.model_utils.clean_copy(Model(inputs=input_1, outputs=output_2))
 
     # Replase dense_2 with dense_3 in model_1
     layer_index = 3
@@ -322,14 +323,14 @@ def test_delete_layer_same_layer_outputs():
     x = dense_3(x)
     output_1 = dense_4(x)
     output_2 = dense_4(y)
-    model_1 = prune.clean_copy(Model(inputs=input_1, outputs=[output_1, output_2]))
+    model_1 = kerasprune.model_utils.clean_copy(Model(inputs=input_1, outputs=[output_1, output_2]))
 
     x = dense_1(input_1)
     y = dense_2(x)
     # x = dense_3(x)
     output_1 = dense_4(x)
     output_2 = dense_4(y)
-    model_2_exp = prune.clean_copy(
+    model_2_exp = kerasprune.model_utils.clean_copy(
         Model(inputs=input_1, outputs=[output_1, output_2]))
 
     model_2 = prune.delete_layer(model_1, model_1.get_layer(dense_3.name), copy=False)
