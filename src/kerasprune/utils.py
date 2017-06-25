@@ -1,15 +1,10 @@
 """Utilities used across other modules."""
 
 
-def _check_valid_layer(layer):
-    """Checks that this has been implemented for the layers' classes."""
-    if layer.__class__.__name__ in ('Conv2D', 'Dense'):
+def find_activation_layer(model, layer_index):
+    if model.layers[layer_index].__class__.__name__ in ('Conv2D', 'Dense'):
         assert ValueError('This functionality is only implemented for Conv2D '
                           'and Dense layers.')
-
-
-def find_layers(model, layer_index):
-    _check_valid_layer(model.layers[layer_index])
     model_config = model.get_config()
     layer_classes = [layer_config['class_name']
                      for layer_config in model_config]
@@ -36,8 +31,6 @@ def find_layers(model, layer_index):
         assert ValueError('This functionality only works for layers using or '
                           'followed by a "relu" activation.')
 
-    _check_valid_layer(model.layers[next_layer])
-
-    return [activation_layer, next_layer]
+    return activation_layer
 
 

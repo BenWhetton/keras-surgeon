@@ -2,7 +2,7 @@
 import pandas as pd
 from keras import backend as K
 
-from kerasprune.utils import find_layers
+from kerasprune.utils import find_activation_layer
 
 
 def high_apoz(model,
@@ -49,7 +49,7 @@ def high_apoz(model,
                           '"channels_last" or "channels_first", but got',
                           data_format)
     # identify the activation layer and the next layer containing weights.
-    (activation_layer_index, next_layer_index) = find_layers(model, layer_index)
+    activation_layer_index = find_activation_layer(model, layer_index)
     # Perform the forward pass and get the activations of the layer.
     get_activations = K.function([model.layers[0].input, K.learning_phase()],
                                  [model.layers[activation_layer_index].output])
