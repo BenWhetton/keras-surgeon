@@ -100,13 +100,17 @@ def test_delete_channels_rec_1():
     new_model = delete_channels(model, model.layers[2], [0])
 
 
-@pytest.fixture
-def model_3():
+def model_3(data_format):
     from keras.layers import Input, Dense, Conv2D, MaxPool2D, Flatten
     from keras.models import Model
-    main_input = Input(shape=[7, 7, 1])
-    x = Conv2D(3, [3, 3], data_format='channels_last')(main_input)
-    x = Conv2D(3, [3, 3], data_format='channels_last')(x)
+    if data_format is 'channels_last':
+        main_input = Input(shape=[7, 7, 1])
+    elif data_format is 'channels_first':
+        main_input = Input(shape=[1, 7, 7])
+    else:
+        raise ValueError(data_format + ' is not a valid "data_format" value.')
+    x = Conv2D(3, [3, 3], data_format=data_format)(main_input)
+    x = Conv2D(3, [3, 3], data_format=data_format)(x)
     x = Flatten()(x)
     x = Dense(3)(x)
     main_output = Dense(1)(x)
@@ -135,42 +139,46 @@ def model_3():
     return model
 
 
-@pytest.mark.parametrize("channel_index", [
+@pytest.mark.parametrize('data_format', ['channels_first', 'channels_last'])
+@pytest.mark.parametrize('channel_index', [
     [0],
     [1],
     [2],
     [0, 1]
     # pytest.param("6*9", 42, marks=pytest.mark.xfail),
 ])
-def test_delete_channels_rec_conv2d_conv2d(model_3, channel_index):
+def test_delete_channels_rec_conv2d_conv2d(channel_index, data_format):
     from kerasprune.prune import delete_channels
+    model = model_3(data_format)
     layer_index = 1
     # next_layer_index = 2
-    new_model = delete_channels(model_3,
-                                    model_3.layers[layer_index],
-                                    channel_index,
-                                    copy=True)
-    w = model_3.layers[layer_index].get_weights()
+    new_model = delete_channels(model,
+                                model.layers[layer_index],
+                                channel_index,
+                                copy=True)
+    w = model.layers[layer_index].get_weights()
     correct_w = [np.delete(w[0], channel_index, axis=-1),
                  np.delete(w[1], channel_index, axis=0)]
     new_w = new_model.layers[layer_index].get_weights()
     assert weights_equal(correct_w, new_w)
 
 
+@pytest.mark.parametrize('data_format', ['channels_first', 'channels_last'])
 @pytest.mark.parametrize("channel_index", [
     [0],
     [1],
     [2],
     [0, 1]
 ])
-def test_delete_channels_rec_conv2d_conv2d_next_layer(model_3, channel_index):
+def test_delete_channels_rec_conv2d_conv2d_next_layer(channel_index, data_format):
     from kerasprune.prune import delete_channels
+    model = model_3(data_format)
     layer_index = 1
     next_layer_index = 2
-    new_model = delete_channels(model_3,
-                                    model_3.layers[layer_index],
-                                    channel_index)
-    w = model_3.layers[next_layer_index].get_weights()
+    new_model = delete_channels(model,
+                                model.layers[layer_index],
+                                channel_index)
+    w = model.layers[next_layer_index].get_weights()
     correct_w = [np.delete(w[0], channel_index, axis=-2),
                  w[1]]
     new_w = new_model.layers[next_layer_index].get_weights()

@@ -7,71 +7,6 @@ from keras.models import Model
 logging.basicConfig(level=logging.INFO)
 
 
-def _check_valid_layer(layer):
-    """Check that this library has been implemented the layer's class."""
-    if layer.__class__.__name__ in ('Conv2D',
-                                    'Dense',
-                                    'MaxPool2D',
-                                    'Activation',
-                                    'Flatten'):
-        assert ValueError('This library has not yet been implemented for ',
-                          type(layer), ' layers.')
-
-
-def _delete_output_weights(layer, channels_index, channels_axis):
-    """Delete the weights corresponding to the removed neurons."""
-    weights = layer.get_weights()
-    new_weights = [np.delete(weights[0], channels_index, axis=channels_axis),
-                   np.delete(weights[1], channels_index, axis=0)]
-    return new_weights
-
-
-def _delete_input_weights(layer,
-                          delete_channels_index,
-                          channels_axis,
-                          transform_function=(),
-                          reverse_transform_function=()):
-    """Delete the input weights in the downstream layer."""
-    weights = layer.get_weights()
-    # Apply transform to reshape weights to the previous layer's output
-    # dimensions
-    for f in transform_function[::-1]:
-        weights[0] = f(weights[0])
-    # Delete the weights corresponding to the neurons (channels) to be deleted.
-    new_weights = [np.delete(weights[0], delete_channels_index,
-                             axis=channels_axis),
-                   weights[1]]
-    # Apply the reverse transform to return weights to the correct shape.
-    for f in reverse_transform_function:
-        new_weights[0] = f(new_weights[0])
-    return new_weights
-
-
-def _get_channels_axis(layer):
-    layer_class = layer.__class__.__name__
-    if layer_class == 'Conv2D':
-        if layer.get_config()['data_format'] == 'channels_first':
-            input_channels_axis = 0
-            output_channels_axis = 1
-        else:
-            input_channels_axis = -2
-            output_channels_axis = -1
-
-    elif layer_class == 'Dense':
-        input_channels_axis = 0
-        output_channels_axis = -1
-
-    elif layer_class in ('InputLayer', 'Flatten'):
-        input_channels_axis = None
-        output_channels_axis = None
-
-    else:
-        raise TypeError('This function has only been implemented for '
-                        'convolutional and dense layers.')
-
-    return [input_channels_axis, output_channels_axis]
-
-
 def rebuild_sequential(layers):
     """Rebuild a sequential model from a list if layers preserving the weights
 
@@ -194,8 +129,7 @@ def _apply_delete_mask(layer, inbound_delete_masks):
         new_layer = layer
         outbound_delete_mask = None
     else:
-        if len(inbound_delete_masks) == 1:
-            inbound_delete_masks = inbound_delete_masks[0]
+        inbound_delete_masks = extract_if_single_element(inbound_delete_masks)
         # otherwise, delete_mask.shape should be: layer.input_shape[1:]
         layer_class = layer.__class__.__name__
         if layer_class == 'InputLayer':
@@ -214,28 +148,24 @@ def _apply_delete_mask(layer, inbound_delete_masks):
             new_layer = layer
 
         elif layer_class == 'Conv2D':
-            [channels_axis, _] = _get_channels_axis(layer)
             # outbound delete mask set to ones
             # no downstream layers are affected
             outbound_delete_mask = np.ones(layer.output_shape[1:], dtype=bool)
             # Conv layer: trim down inbound_delete_masks to filter shape
             k_size = layer.kernel_size
             if layer.data_format == 'channels_first':
-                inbound_delete_masks = inbound_delete_masks[:,
-                                                            :k_size[0],
-                                                            :k_size[1]]
-            elif layer.data_format == 'channels_last':
-                inbound_delete_masks = inbound_delete_masks[:k_size[0],
-                                                            :k_size[1],
-                                                            :]
+                inbound_delete_masks = np.swapaxes(inbound_delete_masks, 0, -1)
+            index = [slice(None, dim_size, None) for dim_size in k_size]
+            inbound_delete_masks = inbound_delete_masks[index + [slice(None)]]
             # Delete unused weights to obtain new_weights
             weights = layer.get_weights()
-            full_delete_mask = np.repeat(
-                np.expand_dims(inbound_delete_masks, axis=3),
-                weights[0].shape[3], axis=3)
+            # The mask size is equal to the
+            full_delete_mask = np.repeat(inbound_delete_masks[..., np.newaxis],
+                                         weights[0].shape[-1],
+                                         axis=-1)
             weights = weights
             new_shape = list(weights[0].shape)
-            new_shape[channels_axis] = -1
+            new_shape[-2] = -1
             weights_pruned = weights[0][full_delete_mask]
             weights_reshaped = np.reshape(weights_pruned, new_shape)
             weights[0] = weights_reshaped
@@ -407,33 +337,10 @@ def delete_layer(model, layer, node_indices=None, copy=True):
 
 def delete_channels(model, layer, channels_index, node_indices=None, copy=None):
     # Delete the channels in layer to create new_layer
-    [_, output_axis] = _get_channels_axis(layer)
-    new_weights = _delete_output_weights(layer, channels_index,
-                                         output_axis)
-    layer_config = layer.get_config()
-    if 'units' in layer_config.keys():
-        channels_string = 'units'
-    elif 'filters' in layer_config.keys():
-        channels_string = 'filters'
-    else:
-        raise ValueError(
-            'The layer must have either a "units" or "filters" '
-            'property to be able to delete channels.')
-
-    if any([index + 1 > layer_config[channels_string] for index in
-            channels_index]):
-        raise ValueError('Channels index value(s) are out of range. '
-                         'This layer only has {0} units'
-                         .format(layer_config[channels_string]))
-    layer_config[channels_string] -= len(channels_index)
-    layer_config['weights'] = new_weights
-    new_layer = type(layer).from_config(layer_config)
+    new_layer = delete_channel_weights(layer, channels_index)
 
     # Create the mask for determining the weights to delete in shallower layers
-    new_delete_mask = np.ones(layer.output_shape[1:], dtype=bool)
-    index = [slice(None)] * new_delete_mask.ndim
-    index[output_axis] = channels_index
-    new_delete_mask[tuple(index)] = False
+    new_delete_mask = make_delete_mask(layer, channels_index)
 
     # initialise the delete masks for the model input
     input_delete_masks = [np.ones(node.outbound_layer.input_shape[1:],
@@ -540,3 +447,42 @@ def extract_if_single_element(x):
     if len(x) == 1:
         x = x[0]
     return x
+
+
+def make_delete_mask(layer, channels_index):
+    layer_config = layer.get_config()
+    if ('data_format' in layer_config.keys()) and (layer_config['data_format'] == 'channels_first'):
+        output_channels_axis = 0
+    else:
+        output_channels_axis = -1
+    new_delete_mask = np.ones(layer.output_shape[1:], dtype=bool)
+    index = [slice(None)] * new_delete_mask.ndim
+    index[output_channels_axis] = channels_index
+    new_delete_mask[tuple(index)] = False
+    return new_delete_mask
+
+
+def delete_channel_weights(layer, channels_index):
+    """Delete the weights corresponding to the removed neurons."""
+    weights = layer.get_weights()
+    new_weights = [np.delete(weights[0], channels_index, axis=-1),
+                   np.delete(weights[1], channels_index, axis=0)]
+    layer_config = layer.get_config()
+    if 'units' in layer_config.keys():
+        channels_string = 'units'
+    elif 'filters' in layer_config.keys():
+        channels_string = 'filters'
+    else:
+        raise ValueError(
+            'The layer must have either a "units" or "filters" '
+            'property to be able to delete channels.')
+
+    if any([index + 1 > layer_config[channels_string] for index in
+            channels_index]):
+        raise ValueError('Channels index value(s) are out of range. '
+                         'This layer only has {0} units'
+                         .format(layer_config[channels_string]))
+    layer_config[channels_string] -= len(channels_index)
+    layer_config['weights'] = new_weights
+    new_layer = type(layer).from_config(layer_config)
+    return new_layer
