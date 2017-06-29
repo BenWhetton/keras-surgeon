@@ -153,10 +153,8 @@ def _apply_delete_mask(layer, inbound_delete_masks):
                                          axis=-1)
             weights = weights
             new_shape = list(weights[0].shape)
-            new_shape[-2] = -1
-            weights_pruned = weights[0][full_delete_mask]
-            weights_reshaped = np.reshape(weights_pruned, new_shape)
-            weights[0] = weights_reshaped
+            new_shape[-2] = -1  # weights data format is always channels_last
+            weights[0] = np.reshape(weights[0][full_delete_mask], new_shape)
             # Instantiate new layer with new_weights
             config = layer.get_config()
             config['weights'] = weights
