@@ -1,15 +1,13 @@
 """Prune connections or whole neurons from Keras model layers."""
-
+# Imports
 import logging
 
 import numpy as np
 from keras.models import Model
 
-from kerasprune.model_utils import clean_copy, get_node_depth, \
-    check_nodes_in_model
-from kerasprune.utils import sort_x_by_y, extract_if_single_element
 from kerasprune import utils
 
+# Set up logging
 logging.basicConfig(level=logging.INFO)
 
 
@@ -97,7 +95,7 @@ def rebuild_submodel(model_inputs,
 
             # Apply masks to the layer weights and call it on its inputs
             new_layer, output_mask = _apply_delete_mask(layer, input_masks)
-            output = new_layer(extract_if_single_element(inputs))
+            output = new_layer(utils.single_element(inputs))
 
             finished_nodes[node] = (output, output_mask)
             logging.debug('layer complete: {0}'.format(layer.name))
@@ -118,7 +116,7 @@ def _apply_delete_mask(layer, inbound_delete_masks):
         new_layer = layer
         outbound_delete_mask = None
     else:
-        inbound_delete_masks = extract_if_single_element(inbound_delete_masks)
+        inbound_delete_masks = utils.single_element(inbound_delete_masks)
         # otherwise, delete_mask.shape should be: layer.input_shape[1:]
         layer_class = layer.__class__.__name__
         if layer_class == 'InputLayer':
@@ -207,7 +205,7 @@ def insert_layer(model, layer, new_layer, node_indices=None, copy=True):
             raise ValueError('Cannot insert new layer at node with multiple '
                              'inbound layers.')
         # Call the new layer on the inbound layer's output
-        new_output = new_layer(extract_if_single_element(inputs))
+        new_output = new_layer(utils.single_element(inputs))
         # Replace the inbound layer's output with the new layer's output
         node = this_layer.inbound_nodes[node_index]
         old_output = node.inbound_layers[0].get_output_at(node.node_indices[0])
@@ -229,7 +227,7 @@ def replace_layer(model, layer, new_layer, node_indices=None, copy=True):
     # Define the function to be applied to the inputs to the layer at each node
     def _replace_layer(this_layer, node_index, inputs):
         # Call the new layer on the rebuild submodel's inputs
-        new_output = new_layer(extract_if_single_element(inputs))
+        new_output = new_layer(utils.single_element(inputs))
 
         # Replace the original layer's output with the new layer's output
         replaced_layer_output = this_layer.get_output_at(node_index)
@@ -269,7 +267,7 @@ def delete_layer(model, layer, node_indices=None, copy=True):
         if len(inputs) >= 2:
             raise ValueError('Cannot insert new layer at node with multiple '
                              'inbound layers.')
-        inputs = extract_if_single_element(inputs)
+        inputs = utils.single_element(inputs)
         deleted_layer_output = this_layer.get_output_at(node_index)
         replace_inputs = {deleted_layer_output: (inputs, None)}
         return replace_inputs
@@ -298,7 +296,7 @@ def delete_channels(model, layer, channel_indices, node_indices=None, copy=None)
     # define the function to be applied to the inputs to the layer at each node
     def _delete_inbound_weights(this_layer, node_index, inputs):
         # Call the new layer on the rebuild submodel's inputs
-        new_output = new_layer(extract_if_single_element(inputs))
+        new_output = new_layer(utils.single_element(inputs))
 
         # Replace the original layer's output with the modified layer's output
         deleted_layer_output = this_layer.get_output_at(node_index)
@@ -326,9 +324,9 @@ def reused_core_logic(model, layer, modifier_function, node_indices=None, copy=N
     # inbound nodes which are contained in the model.
     if not node_indices:
         node_indices = utils.bool_to_index(
-            check_nodes_in_model(model, layer.inbound_nodes))
+            utils.check_nodes_in_model(model, layer.inbound_nodes))
     if copy:
-        model = clean_copy(model)
+        model = utils.clean_copy(model)
         layer = model.get_layer(layer.get_config()['name'])
 
     # For each node associated with the layer,
@@ -338,9 +336,9 @@ def reused_core_logic(model, layer, modifier_function, node_indices=None, copy=N
     # The modifier function will modify some aspect of the model at the chosen layer and return replace_inputs a dictionary of keyed with tensors from the original model (some layer inputs) to be replaced by new tensors: the corresponding values of "replace_inputs"
     replace_tensors = {}
     finished_nodes = {}
-    node_depths = [get_node_depth(model, layer.inbound_nodes[node_index])
+    node_depths = [utils.get_node_depth(model, layer.inbound_nodes[node_index])
                    for node_index in node_indices]
-    sorted_indices = reversed(sort_x_by_y(node_indices, node_depths))
+    sorted_indices = reversed(utils.sort_x_by_y(node_indices, node_depths))
     for node_index in sorted_indices:
         # Rebuild the model up to layer instance
         inbound_node = layer.inbound_nodes[node_index]
@@ -373,7 +371,7 @@ def reused_core_logic(model, layer, modifier_function, node_indices=None, copy=N
                                          input_delete_masks)
     new_model = Model(model.inputs, new_outputs)
     if copy:
-        return clean_copy(new_model)
+        return utils.clean_copy(new_model)
     else:
         return new_model
 
