@@ -6,8 +6,9 @@ import numpy as np
 from keras.models import Model
 
 from kerasprune.model_utils import clean_copy, get_node_depth, \
-    check_for_layer_reuse
+    check_nodes_in_model
 from kerasprune.utils import sort_x_by_y, extract_if_single_element
+from kerasprune import utils
 
 logging.basicConfig(level=logging.INFO)
 
@@ -320,20 +321,12 @@ def reused_core_logic(model, layer, modifier_function, node_indices=None, copy=N
     """
     # Check inputs
     if layer not in model.layers:
-        raise ValueError('layer is not a valid layer in model.')
-    if check_for_layer_reuse(model):
-        # TODO: Check if these exceptions need to be raised
-        # if not node_indices:
-        #     raise ValueError('A node_index must be specified if any layers in '
-        #                      'the model are re-used within the model or in '
-        #                      'other models.')
-        if copy:
-            raise ValueError('The model cannot be cleanly copied if any '
-                             'layers in the model are re-used within the '
-                             'model or in other models. Set copy=False.')
-
+        raise ValueError('layer is not a valid Layer in model.')
+    # If no nodes are specified, apply the modification to all of the layer's
+    # inbound nodes which are contained in the model.
     if not node_indices:
-        node_indices = range(len(layer.inbound_nodes))
+        node_indices = utils.bool_to_index(
+            check_nodes_in_model(model, layer.inbound_nodes))
     if copy:
         model = clean_copy(model)
         layer = model.get_layer(layer.get_config()['name'])
@@ -341,6 +334,7 @@ def reused_core_logic(model, layer, modifier_function, node_indices=None, copy=N
     # For each node associated with the layer,
     # rebuild the model up to the layer
     # then apply the modifier function.
+    # The nodes must first be ordered by depth from input to output.
     # The modifier function will modify some aspect of the model at the chosen layer and return replace_inputs a dictionary of keyed with tensors from the original model (some layer inputs) to be replaced by new tensors: the corresponding values of "replace_inputs"
     replace_tensors = {}
     finished_nodes = {}
@@ -368,8 +362,7 @@ def reused_core_logic(model, layer, modifier_function, node_indices=None, copy=N
         # modify the chosen layer in some manner
         replace_tensors.update(modifier_function(layer,
                                                  node_index,
-                                                 submodel_outputs)
-                               )
+                                                 submodel_outputs))
 
     # Rebuild the rest of the model
     new_outputs, _, _ = rebuild_submodel(model.inputs,

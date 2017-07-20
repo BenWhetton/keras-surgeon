@@ -33,7 +33,28 @@ def check_for_layer_reuse(model, layers=None):
     if layers is None:
         layers = model.layers
     return any([len(l.inbound_nodes) > 1 for l in layers])
-    # for layer in layers:
-    #     if len(layer.inbound_nodes) > 1:
-    #         return True
-    # return False
+
+
+def find_nodes_in_model(model, layer):
+    """Find the indices of layer's inbound nodes which are in model"""
+    model_nodes = get_model_nodes(model)
+    node_indices = []
+    for i, node in enumerate(layer.inbound_nodes):
+        if node in model_nodes:
+            node_indices.append(i)
+    return node_indices
+
+
+def check_nodes_in_model(model, nodes):
+    """Check if nodes are in model"""
+    model_nodes = get_model_nodes(model)
+    nodes_in_model = [False] * len(nodes)
+    for i, node in enumerate(nodes):
+        if node in model_nodes:
+            nodes_in_model[i] = True
+    return nodes_in_model
+
+
+def get_model_nodes(model):
+    """Return all nodes in the model"""
+    return [node for v in model.nodes_by_depth.values() for node in v]

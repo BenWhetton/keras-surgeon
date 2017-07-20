@@ -45,3 +45,7 @@ def extract_if_single_element(x):
     if len(x) == 1:
         x = x[0]
     return x
+
+
+def bool_to_index(x):
+    return [i for i in range(len(x)) if x]
