@@ -12,10 +12,11 @@ logging.basicConfig(level=logging.INFO)
 
 
 def rebuild_sequential(layers):
-    """Rebuild a sequential model from a list if layers preserving the weights
+    """Rebuild a sequential model from a list of layers.
 
     Arguments:
         layers: List of Keras layers
+
     Returns:
         A Keras Sequential model
     """
@@ -37,7 +38,25 @@ def rebuild_submodel(model_inputs,
                      replace_tensors=None,
                      finished_nodes=None,
                      input_delete_masks=None):
-    """Rebuild the model"""
+    """Rebuild a subsection of a model given its inputs and outputs.
+
+    Re-constructing subsections of a model enables layers or layer instances
+    to be removed or modified and new layers or layer instances to be added.
+
+    Arguments:
+        model_inputs: List of the submodel's input tensor(s).
+        output_layers: List of the submodel's output layers(s).
+        output_layers_node_indices: List of indices of output layers' nodes.
+        replace_tensors: Dict mapping model tensors to replacement tensors.
+        finished_nodes: Dict mapping finished nodes to lists of their outputs
+                        and output masks.
+        input_delete_masks: Boolean mask for each input with size=input's size.
+
+    Returns:
+        list containing: submodel output tensors, output masks and updated
+        finished_nodes dict
+
+    """
     if not input_delete_masks:
         input_delete_masks = [None] * len(model_inputs)
     if not finished_nodes:
@@ -94,7 +113,7 @@ def rebuild_submodel(model_inputs,
                 node.inbound_layers, inbound_node_indices)])
 
             # Apply masks to the layer weights and call it on its inputs
-            new_layer, output_mask = _apply_delete_mask(layer, input_masks)
+            new_layer, output_mask = _apply_delete_mask(layer, node_index, input_masks)
             output = new_layer(utils.single_element(inputs))
 
             finished_nodes[node] = (output, output_mask)
@@ -108,10 +127,19 @@ def rebuild_submodel(model_inputs,
     return submodel_outputs, output_masks, finished_nodes
 
 
-def _apply_delete_mask(layer, inbound_delete_masks):
-    """Apply the inbound delete mask and return the outbound delete mask"""
+def _apply_delete_mask(layer, node_index, inbound_delete_masks):
+    """Apply the inbound delete mask and return the outbound delete mask
+
+    When specific channels in a layer or layer instance are deleted, the
+    mask propagates information about which channels are affected to
+    downstream layers.
+    If the layer contains weights, the weights which were previously connected
+    to the deleted channels are deleted and outbound masks are set to ones
+    since further downstream layers aren't affected.
+    """
+
     # if delete_mask is None, the deleted channels do not affect this layer or
-    # any layers above it
+    # any layers above/downstream from it
     if all(mask is None for mask in inbound_delete_masks):
         new_layer = layer
         outbound_delete_mask = None
@@ -123,21 +151,22 @@ def _apply_delete_mask(layer, inbound_delete_masks):
             raise RuntimeError('This should never get here!')
 
         elif layer_class == 'Dense':
+            output_shape = layer.get_output_shape_at(node_index)
             weights = layer.get_weights()
             weights[0] = weights[0][np.where(inbound_delete_masks)[0], :]
             config = layer.get_config()
             config['weights'] = weights
             new_layer = type(layer).from_config(config)
-            outbound_delete_mask = np.ones(layer.output_shape[1:], dtype=bool)
+            outbound_delete_mask = np.ones(output_shape[1:], dtype=bool)
 
         elif layer_class == 'Flatten':
             outbound_delete_mask = np.reshape(inbound_delete_masks, [-1, ])
             new_layer = layer
 
         elif layer_class == 'Conv2D':
-            # outbound delete mask set to ones
-            # no downstream layers are affected
-            outbound_delete_mask = np.ones(layer.output_shape[1:], dtype=bool)
+            # Set outbound delete mask to ones.
+            output_shape = layer.get_output_shape_at(node_index)
+            outbound_delete_mask = np.ones(output_shape[1:], dtype=bool)
             # Conv layer: trim down inbound_delete_masks to filter shape
             k_size = layer.kernel_size
             if layer.data_format == 'channels_first':
@@ -150,7 +179,6 @@ def _apply_delete_mask(layer, inbound_delete_masks):
             full_delete_mask = np.repeat(inbound_delete_masks[..., np.newaxis],
                                          weights[0].shape[-1],
                                          axis=-1)
-            weights = weights
             new_shape = list(weights[0].shape)
             new_shape[-2] = -1  # weights data format is always channels_last
             weights[0] = np.reshape(weights[0][full_delete_mask], new_shape)
@@ -159,12 +187,22 @@ def _apply_delete_mask(layer, inbound_delete_masks):
             config['weights'] = weights
             new_layer = type(layer).from_config(config)
 
+        elif layer_class == 'MaxPooling2D':
+            output_shape = layer.get_output_shape_at(node_index)
+            if layer.data_format == 'channels_first':
+                index = [slice(None)] + [slice(None, dim_size, None) for
+                                         dim_size in output_shape[2:]]
+            elif layer.data_format == 'channels_last':
+                index = [slice(None, dim_size, None) for dim_size in
+                         output_shape[1:-1]] + [slice(None)]
+            else:
+                raise ValueError('Invalid data format')
+            outbound_delete_mask = inbound_delete_masks[index]
+            new_layer = layer
+
         else:
             raise ValueError('"{0}" layers are currently '
                              'unsupported.'.format(layer_class))
-
-        # if layer_class == 'MaxPool2D':
-        #     delete_mask = delete_mask
 
     return new_layer, outbound_delete_mask
 
@@ -213,11 +251,11 @@ def insert_layer(model, layer, new_layer, node_indices=None, copy=True):
         return replace_tensor
 
     # The same core logic is used for all layer manipulation functions
-    new_model = reused_core_logic(model,
-                                  layer,
-                                  _insert_layer,
-                                  node_indices,
-                                  copy)
+    new_model = modify_model(model,
+                             layer,
+                             _insert_layer,
+                             node_indices,
+                             copy)
     return new_model
 
 
@@ -235,12 +273,12 @@ def replace_layer(model, layer, new_layer, node_indices=None, copy=True):
         return replace_inputs
 
     # The same core logic is used for all layer manipulation functions
-    new_model = reused_core_logic(model,
-                                  layer,
-                                  _replace_layer,
-                                  node_indices,
-                                  copy,
-                                  input_delete_masks=None)
+    new_model = modify_model(model,
+                             layer,
+                             _replace_layer,
+                             node_indices,
+                             copy,
+                             input_delete_masks=None)
     return new_model
 
 
@@ -273,48 +311,102 @@ def delete_layer(model, layer, node_indices=None, copy=True):
         return replace_inputs
 
     # The same core logic is used for all layer manipulation functions
-    new_model = reused_core_logic(model,
-                                  layer,
-                                  _delete_layer,
-                                  node_indices,
-                                  copy,
-                                  input_delete_masks=None)
+    new_model = modify_model(model,
+                             layer,
+                             _delete_layer,
+                             node_indices,
+                             copy,
+                             input_delete_masks=None)
     return new_model
 
 
-def delete_channels(model, layer, channel_indices, node_indices=None, copy=None):
+def delete_channels(model, layer, channels, node_indices=None, copy=None):
+    """Delete channels from the specified layer.
+
+    This method is designed to facilitate research into pruning networks to
+    improve their prediction performance and/or reduce computational load by
+    deleting channels.
+    All weights associated with the deleted channels in the specified layer
+    and downstream layers are deleted.
+    If the layer is shared and node_indices is set, channels will be deleted
+    from the corresponding layer instances only. This will break the weight
+    sharing between pruned and un-pruned instances in subsequent training.
+    Channels correspond to filters in conv layers and units in other layers.
+
+    Args:
+        model: Model object.
+        layer: Layer whose channels are to be deleted.
+        channels: Indices of the channels to be deleted
+        node_indices: Indices of the nodes where channels are to be deleted.
+        copy: If True, the model will be copied before and after
+              manipulation. This keeps both the old and new models' layers
+              clean of each-others data-streams.
+
+    Returns:
+        A new Model with the specified channels and associated weights deleted.
+
+    Raises:
+        blaError: if layer is not contained by model
+        ValueError: if new_layer is not compatible with the input and output
+                    dimensions of the layers preceding and following it.
+        ValueError: if node_index does not correspond to one of layer's inbound
+                    nodes.
+    """
+
     # Delete the channels in layer to create new_layer
-    new_layer = _delete_channel_weights(layer, channel_indices)
-
-    # Create the mask for determining the weights to delete in shallower layers
-    new_delete_mask = _make_delete_mask(layer, channel_indices)
-
-    # initialise the delete masks for the model input
+    new_layer = _delete_channel_weights(layer, channels)
+    # Create the mask to determine the weights to delete in downstream layers
+    new_delete_mask = _make_delete_mask(layer, channels)
+    # Initialise the delete masks for the model input as all True.
     input_delete_masks = [np.ones(node.outbound_layer.input_shape[1:],
                                   dtype=bool) for node in model.inbound_nodes]
 
-    # define the function to be applied to the inputs to the layer at each node
+    # Define the function to be applied to the inputs to the layer at each node
     def _delete_inbound_weights(this_layer, node_index, inputs):
         # Call the new layer on the rebuild submodel's inputs
         new_output = new_layer(utils.single_element(inputs))
-
         # Replace the original layer's output with the modified layer's output
         deleted_layer_output = this_layer.get_output_at(node_index)
         replace_inputs = {deleted_layer_output: (new_output, new_delete_mask)}
         return replace_inputs
 
-    # The same core logic is used for all layer manipulation functions
-    new_model = reused_core_logic(model,
-                                  layer,
-                                  _delete_inbound_weights,
-                                  node_indices,
-                                  copy,
-                                  input_delete_masks)
+    # Apply the modifications to the specified layer instances in the model
+    new_model = modify_model(model,
+                             layer,
+                             _delete_inbound_weights,
+                             node_indices,
+                             copy,
+                             input_delete_masks)
     return new_model
 
 
-def reused_core_logic(model, layer, modifier_function, node_indices=None, copy=None, input_delete_masks=None):
-    """Helper function to modify a model around some or all instances of a specific layer
+def modify_model(model,
+                 layer,
+                 modifier_function,
+                 node_indices=None,
+                 copy=None,
+                 input_delete_masks=None):
+    """Helper function to modify a model around instances of a specified layer.
+
+    This method applies a modifier function to each node specified by the
+    combination of layer and node_indices.
+    The modifier function performs some operations and returns a mapping of
+    original tensors to the resulting replacement tensors.
+    See uses of this method as examples.
+
+    Arguments:
+        model: Model object to be modified.
+        layer: Layer to be modified.
+        modifier_function: Function to be applied to each specified node.
+        node_indices: Indices of the nodes to be modified.
+        copy: If True, the model will be copied before and after
+              manipulation. This keeps both the old and new models' layers
+              clean of each-others data-streams.
+        input_delete_masks: Boolean masks to specify input channels (used by
+                            delete_channels).
+
+    Returns:
+        A modified model object
 
     """
     # Check inputs
@@ -329,16 +421,15 @@ def reused_core_logic(model, layer, modifier_function, node_indices=None, copy=N
         model = utils.clean_copy(model)
         layer = model.get_layer(layer.get_config()['name'])
 
-    # For each node associated with the layer,
-    # rebuild the model up to the layer
-    # then apply the modifier function.
-    # The nodes must first be ordered by depth from input to output.
-    # The modifier function will modify some aspect of the model at the chosen layer and return replace_inputs a dictionary of keyed with tensors from the original model (some layer inputs) to be replaced by new tensors: the corresponding values of "replace_inputs"
-    replace_tensors = {}
-    finished_nodes = {}
+    # Order the nodes by depth from input to output to ensure that the model is
+    # rebuilt in the correct order.
     node_depths = [utils.get_node_depth(model, layer.inbound_nodes[node_index])
                    for node_index in node_indices]
     sorted_indices = reversed(utils.sort_x_by_y(node_indices, node_depths))
+
+    replace_tensors = {}
+    finished_nodes = {}
+    # For each node i.e. layer instance
     for node_index in sorted_indices:
         # Rebuild the model up to layer instance
         inbound_node = layer.inbound_nodes[node_index]
@@ -347,22 +438,21 @@ def reused_core_logic(model, layer, modifier_function, node_indices=None, copy=N
 
         logging.debug('rebuilding model up to the layer before the insertion: '
                       '{0}'.format(layer))
-        (submodel_outputs,
-         _,  # output_delete_masks,
-         submodel_finished_outputs) = rebuild_submodel(model.inputs,
-                                                       submodel_output_layers,
-                                                       submodel_output_layer_node_indices,
-                                                       replace_tensors,
-                                                       finished_nodes,
-                                                       input_delete_masks)
+        (submodel_outputs, _, submodel_finished_outputs) = rebuild_submodel(
+            model.inputs,
+            submodel_output_layers,
+            submodel_output_layer_node_indices,
+            replace_tensors,
+            finished_nodes,
+            input_delete_masks)
         finished_nodes.update(submodel_finished_outputs)
 
-        # modify the chosen layer in some manner
+        # Apply the modifier function.
         replace_tensors.update(modifier_function(layer,
                                                  node_index,
                                                  submodel_outputs))
 
-    # Rebuild the rest of the model
+    # Rebuild the rest of the model from the modified nodes to the outputs.
     new_outputs, _, _ = rebuild_submodel(model.inputs,
                                          model.output_layers,
                                          model.output_layers_node_indices,

@@ -1,124 +1,56 @@
+import os
+
 import pytest
 import numpy as np
+from keras import models
+from keras import layers
 
-import kerasprune.model_utils
-from kerasprune.prune import delete_channels
-from kerasprune.prune import rebuild_sequential
+from kerasprune import utils
 from kerasprune import prune
-import os
+
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 
-@pytest.fixture
-def model_1():
-    """Basic Lenet-style model test fixture with minimal channels"""
-    from keras.models import Sequential
-    from keras.layers import Dense, Conv2D, Flatten
-    model = Sequential()
-    model.add(Conv2D(2, [3, 3], input_shape=[28, 28, 1], data_format='channels_last', activation='relu'))
-    model.add(Conv2D(2, [3, 3], activation='relu'))
-    model.add(Flatten())
-    model.add(Dense(2, activation='relu'))
-    model.add(Dense(10, activation='relu'))
-    return model
-
-
-@pytest.fixture
-def model_2():
-    """Basic Lenet-style model test fixture with minimal channels"""
-    from keras.models import Model
-    from keras.layers import Dense, Conv2D, Flatten
-    model = model_1()
-    return Model(model.inputs, model.outputs)
-
-
-# def test_delete_channel_conv2d_conv2d(model_1):
-#     layer_index = 0
-#     channels_index = [0]
-#     new_model = delete_channels(model_1, model_1.layers[layer_index], channels_index)
-#     weights = model_1.layers[layer_index].get_weights()
-#     new_weights = new_model.layers[layer_index].get_weights()
-#     assert np.array_equal(weights[0][:, :, :, 1:], new_weights[0])
-#     assert np.array_equal(weights[1][1:], new_weights[1])
-#     weights = model_1.layers[layer_index+1].get_weights()
-#     new_weights = new_model.layers[layer_index+1].get_weights()
-#     assert np.array_equal(weights[0][:, :, 1:, :], new_weights[0])
-#     assert np.array_equal(weights[1], new_weights[1])
-#
-#
-# def test_delete_channel_dense_dense(model_1):
-#     layer_index = 3
-#     channels_index = [0]
-#     new_model = delete_channels(model_1, layer_index, channels_index)
-#     weights = model_1.layers[layer_index].get_weights()
-#     new_weights = new_model.layers[layer_index].get_weights()
-#     assert np.array_equal(weights[0][:, 1:], new_weights[0])
-#     assert np.array_equal(weights[1][1:], new_weights[1])
-#     weights = model_1.layers[layer_index+1].get_weights()
-#     new_weights = new_model.layers[layer_index + 1].get_weights()
-#     assert np.array_equal(weights[0][1:, :], new_weights[0])
-#     assert np.array_equal(weights[1], new_weights[1])
-#
-#
-# def test_delete_channel_conv2d_dense(model_1):
-#     layer_index = 1
-#     channels_index = [0]
-#     new_model = delete_channels(model_1, layer_index, channels_index)
-#     weights = model_1.layers[layer_index].get_weights()
-#     new_weights = new_model.layers[layer_index].get_weights()
-#     assert np.array_equal(weights[0][:, :, :, 1:], new_weights[0])
-#     assert np.array_equal(weights[1][1:], new_weights[1])
-#     weights = model_1.layers[layer_index+2].get_weights()
-#     new_weights = new_model.layers[layer_index + 2].get_weights()
-#     assert np.array_equal(np.delete(weights[0], slice(0, None, 2), axis=0), new_weights[0])
-#     assert np.array_equal(weights[1], new_weights[1])
-
-
 def test_rebuild_sequential(model_1):
-    new_model = rebuild_sequential(model_1.layers)
+    model_2 = prune.rebuild_sequential(model_1.layers)
+    assert compare_models_seq(model_1, model_2)
 
 
 def test_rebuild_submodel(model_2):
-    from keras.models import Model
-    new_model_outputs, _, _ = prune.rebuild_submodel(model_2.inputs,
-                                                     model_2.output_layers,
-                                                     model_2.output_layers_node_indices)
-    new_model = Model(model_2.inputs, new_model_outputs)
+    outputs, _, _ = prune.rebuild_submodel(model_2.inputs,
+                                           model_2.output_layers,
+                                           model_2.output_layers_node_indices)
+    new_model = models.Model(model_2.inputs, outputs)
     assert compare_models(model_2, new_model)
 
 
 def test_delete_channels_rec_1():
-    from keras.layers import Input, Dense
-    from keras.models import Model
-    from kerasprune.prune import delete_channels
-    inputs = Input(shape=(784,))
-    x = Dense(64, activation='relu')(inputs)
-    x = Dense(64, activation='relu')(x)
-    predictions = Dense(10, activation='softmax')(x)
+    inputs = layers.Input(shape=(784,))
+    x = layers.Dense(64, activation='relu')(inputs)
+    x = layers.Dense(64, activation='relu')(x)
+    predictions = layers.Dense(10, activation='softmax')(x)
 
-    model = Model(inputs=inputs, outputs=predictions)
+    model = models.Model(inputs=inputs, outputs=predictions)
     model.compile(optimizer='rmsprop',
                   loss='categorical_crossentropy',
                   metrics=['accuracy'])
-    new_model = delete_channels(model, model.layers[2], [0])
+    prune.delete_channels(model, model.layers[2], [0])
 
 
 def model_3(data_format):
-    from keras.layers import Input, Dense, Conv2D, MaxPool2D, Flatten
-    from keras.models import Model
     if data_format is 'channels_last':
-        main_input = Input(shape=[7, 7, 1])
+        main_input = layers.Input(shape=[7, 7, 1])
     elif data_format is 'channels_first':
-        main_input = Input(shape=[1, 7, 7])
+        main_input = layers.Input(shape=[1, 7, 7])
     else:
         raise ValueError(data_format + ' is not a valid "data_format" value.')
-    x = Conv2D(3, [3, 3], data_format=data_format)(main_input)
-    x = Conv2D(3, [3, 3], data_format=data_format)(x)
-    x = Flatten()(x)
-    x = Dense(3)(x)
-    main_output = Dense(1)(x)
+    x = layers.Conv2D(3, [3, 3], data_format=data_format)(main_input)
+    x = layers.Conv2D(3, [3, 3], data_format=data_format)(x)
+    x = layers.Flatten()(x)
+    x = layers.Dense(3)(x)
+    main_output = layers.Dense(1)(x)
 
-    model = Model(inputs=main_input, outputs=main_output)
+    model = models.Model(inputs=main_input, outputs=main_output)
 
     # Set all of the weights
     w1 = [np.asarray([[[[1, 2, 3]], [[4, 5, 6]], [[7, 8, 9]]],
@@ -127,9 +59,9 @@ def model_3(data_format):
                      dtype='float32'),
           np.asarray([100, 200, 300], dtype='float32')]
     model.layers[1].set_weights(w1)
-    w2 = [
-        np.reshape(np.arange(0, 3 * 3 * 3 * 3, dtype='float32'), [3, 3, 3, 3]),
-        np.asarray([100, 200, 300], dtype='float32')]
+    w2 = [np.reshape(np.arange(0, 3 * 3 * 3 * 3, dtype='float32'),
+                     [3, 3, 3, 3]),
+          np.asarray([100, 200, 300], dtype='float32')]
     model.layers[2].set_weights(w2)
 
     w4 = [np.reshape(np.arange(0, 3 * 3 * 3 * 3, dtype='float32'),
@@ -143,22 +75,17 @@ def model_3(data_format):
 
 
 @pytest.mark.parametrize('data_format', ['channels_first', 'channels_last'])
-@pytest.mark.parametrize('channel_index', [
-    [0],
-    [1],
-    [2],
-    [0, 1]
-    # pytest.param("6*9", 42, marks=pytest.mark.xfail),
-])
-def test_delete_channels_rec_conv2d_conv2d(channel_index, data_format):
-    from kerasprune.prune import delete_channels
+@pytest.mark.parametrize('channel_index', [[0],
+                                           [1],
+                                           [2],
+                                           [0, 1]])
+def test_delete_channels_conv2d_conv2d(channel_index, data_format):
     model = model_3(data_format)
     layer_index = 1
-    # next_layer_index = 2
-    new_model = delete_channels(model,
-                                model.layers[layer_index],
-                                channel_index,
-                                copy=True)
+    new_model = prune.delete_channels(model,
+                                      model.layers[layer_index],
+                                      channel_index,
+                                      copy=True)
     w = model.layers[layer_index].get_weights()
     correct_w = [np.delete(w[0], channel_index, axis=-1),
                  np.delete(w[1], channel_index, axis=0)]
@@ -167,25 +94,43 @@ def test_delete_channels_rec_conv2d_conv2d(channel_index, data_format):
 
 
 @pytest.mark.parametrize('data_format', ['channels_first', 'channels_last'])
-@pytest.mark.parametrize("channel_index", [
-    [0],
-    [1],
-    [2],
-    [0, 1]
-])
-def test_delete_channels_rec_conv2d_conv2d_next_layer(channel_index, data_format):
-    from kerasprune.prune import delete_channels
+@pytest.mark.parametrize("channel_index", [[0],
+                                           [1],
+                                           [2],
+                                           [0, 1]])
+def test_delete_channels_conv2d_conv2d_next_layer(channel_index, data_format):
     model = model_3(data_format)
     layer_index = 1
     next_layer_index = 2
-    new_model = delete_channels(model,
-                                model.layers[layer_index],
-                                channel_index)
+    new_model = prune.delete_channels(model,
+                                      model.layers[layer_index],
+                                      channel_index)
     w = model.layers[next_layer_index].get_weights()
     correct_w = [np.delete(w[0], channel_index, axis=-2),
                  w[1]]
     new_w = new_model.layers[next_layer_index].get_weights()
     assert weights_equal(correct_w, new_w)
+
+
+def test_delete_channels_maxpooling2d():
+    # This returns a tensor
+    inputs = layers.Input(shape=(28, 28, 1))
+    # a layer instance is callable on a tensor, and returns a tensor
+    x = layers.Conv2D(32, [3, 3], activation='relu')(inputs)
+    x = layers.Conv2D(16, [3, 3], activation='relu')(x)
+    x = layers.MaxPool2D(pool_size=(2, 2))(x)
+    x = layers.Flatten()(x)
+    x = layers.Dense(32, activation='relu')(x)
+    predictions = layers.Dense(10, activation='softmax')(x)
+
+    # This creates a model that includes
+    # the Input layer and three Dense layers
+    model = models.Model(inputs=inputs, outputs=predictions)
+    model.compile(optimizer='rmsprop',
+                  loss='categorical_crossentropy',
+                  metrics=['accuracy'])
+
+    new_model = prune.delete_channels(model, model.layers[2], [0])
 
 
 def weights_equal(w1, w2):
@@ -198,147 +143,145 @@ def weights_equal(w1, w2):
 
 
 def test_delete_layer():
-    from keras.layers import Input, Dense, Conv2D, MaxPool2D, Flatten
-    from keras.models import Model
     # Create all model layers
-    input_1 = Input(shape=[7, 7, 1])
-    conv2d_1 = Conv2D(3, [3, 3], data_format='channels_last')
-    conv2d_2 = Conv2D(3, [3, 3], data_format='channels_last')
-    flatten_1 = Flatten()
-    dense_1 = Dense(3)
-    dense_2 = Dense(3)
-    dense_3 = Dense(3)
-    dense_4 = Dense(1)
-    # Create the model and expected modified model
-    output_1 = dense_4(dense_3(dense_2(dense_1(flatten_1(conv2d_2(conv2d_1(input_1)))))))
-    output_2 = dense_4(dense_3(dense_1(flatten_1(conv2d_2(conv2d_1(input_1))))))
-    model_1 = kerasprune.model_utils.clean_copy(Model(inputs=input_1, outputs=output_1))
-    model_2_exp = kerasprune.model_utils.clean_copy(Model(inputs=input_1, outputs=output_2))
-    # Delete the layer
-    delete_layer_index = 5
-    model_2 = prune.delete_layer(model_1, model_1.layers[delete_layer_index])
+    input_1 = layers.Input(shape=[7, 7, 1])
+    conv2d_1 = layers.Conv2D(3, [3, 3], data_format='channels_last')
+    conv2d_2 = layers.Conv2D(3, [3, 3], data_format='channels_last')
+    flatten_1 = layers.Flatten()
+    dense_1 = layers.Dense(3)
+    dense_2 = layers.Dense(3)
+    dense_3 = layers.Dense(3)
+    dense_4 = layers.Dense(1)
+    # Create the base model
+    x = conv2d_1(input_1)
+    x = conv2d_2(x)
+    x = flatten_1(x)
+    x = dense_1(x)
+    x = dense_2(x)
+    x = dense_3(x)
+    output_1 = dense_4(x)
+    model_1 = utils.clean_copy(models.Model(input_1, output_1))
+    # Create the expected modified model
+    x = conv2d_1(input_1)
+    x = conv2d_2(x)
+    x = flatten_1(x)
+    x = dense_1(x)
+    x = dense_3(x)
+    output_2 = dense_4(x)
+    model_2_exp = utils.clean_copy(models.Model(input_1, output_2))
+    # Delete layer dense_2
+    model_2 = prune.delete_layer(model_1, model_1.get_layer(dense_2.name))
     # Compare the modified model with the expected modified model
     assert compare_models(model_2, model_2_exp)
 
 
 def test_delete_layer_reuse():
-    from keras.layers import Input, Dense, Conv2D, MaxPool2D, Flatten
-    from keras.models import Model
     # Create all model layers
-    input_1 = Input(shape=[3])
-    dense_1 = Dense(3)
-    dense_2 = Dense(3)
-    dense_3 = Dense(3)
-    dense_4 = Dense(3)
-    # Create the model and expected modified model
+    input_1 = layers.Input(shape=[3])
+    dense_1 = layers.Dense(3)
+    dense_2 = layers.Dense(3)
+    dense_3 = layers.Dense(3)
+    dense_4 = layers.Dense(3)
+    # Create the model
     x = dense_1(input_1)
     x = dense_2(x)
     x = dense_3(x)
     x = dense_2(x)
     output_1 = dense_4(x)
-    # model_1 = prune.clean_copy(Model(inputs=input_1, outputs=output_1))
-    model_1 = Model(inputs=input_1, outputs=output_1)
-
+    # TODO: use clean_copy once keras issue 4160 has been fixed
+    # model_1 = prune.clean_copy(Model(input_1, output_1))
+    model_1 = models.Model(input_1, output_1)
+    # Create the expected modified model
     x = dense_1(input_1)
     x = dense_3(x)
     output_2 = dense_4(x)
-    # model_2_exp = prune.clean_copy(Model(inputs=input_1, outputs=output_2))
-    model_2_exp = Model(inputs=input_1, outputs=output_2)
-    # Delete the layer
-    delete_layer_index = 2
-    model_2 = prune.delete_layer(model_1, model_1.layers[delete_layer_index],
+    # model_2_exp = prune.clean_copy(Model(input_1, output_2))
+    model_2_exp = models.Model(input_1, output_2)
+    # Delete layer dense_2
+    model_2 = prune.delete_layer(model_1,
+                                 model_1.get_layer(dense_2.name),
                                  copy=False)
     # Compare the modified model with the expected modified model
     assert compare_models(model_2, model_2_exp)
 
 
 def test_replace_layer():
-    from keras.layers import Input, Dense, Conv2D, MaxPool2D, Flatten
-    from keras.models import Model
     # Create all model layers
-    input_1 = Input(shape=[7, 7, 1])
-    dense_1 = Dense(3)
-    dense_2 = Dense(3)
-    dense_3 = Dense(3)
-    dense_4 = Dense(1)
-    # Create the model and expected modified model
+    input_1 = layers.Input(shape=[7, 7, 1])
+    dense_1 = layers.Dense(3)
+    dense_2 = layers.Dense(3)
+    dense_3 = layers.Dense(3)
+    dense_4 = layers.Dense(1)
+    # Create the model
     x = dense_1(input_1)
     x = dense_2(x)
     output_1 = dense_4(x)
-    model_1 = kerasprune.model_utils.clean_copy(Model(inputs=input_1, outputs=output_1))
-
+    model_1 = utils.clean_copy(models.Model(input_1, output_1))
+    # Create the expected modified model
     x = dense_1(input_1)
     x = dense_3(x)
     output_2 = dense_4(x)
-    model_2_exp = kerasprune.model_utils.clean_copy(Model(inputs=input_1, outputs=output_2))
-
-    # Replase dense_2 with dense_3 in model_1
-    layer_index = 2
-    model_2 = prune.replace_layer(model_1, model_1.layers[layer_index], dense_3)
+    model_2_exp = utils.clean_copy(models.Model(input_1, output_2))
+    # Replace dense_2 with dense_3 in model_1
+    model_2 = prune.replace_layer(model_1,
+                                  model_1.get_layer(dense_2.name),
+                                  dense_3)
     # Compare the modified model with the expected modified model
     assert compare_models(model_2, model_2_exp)
 
 
 def test_insert_layer():
-    from keras.layers import Input, Dense, Conv2D, MaxPool2D, Flatten
-    from keras.models import Model
     # Create all model layers
-    input_1 = Input(shape=[7, 7, 1])
-    dense_1 = Dense(3)
-    dense_2 = Dense(3)
-    dense_3 = Dense(3)
-    dense_4 = Dense(1)
-    # Create the model and expected modified model
+    input_1 = layers.Input(shape=[7, 7, 1])
+    dense_1 = layers.Dense(3)
+    dense_2 = layers.Dense(3)
+    dense_3 = layers.Dense(3)
+    dense_4 = layers.Dense(1)
+    # Create the model
     x = dense_1(input_1)
     x = dense_2(x)
     output_1 = dense_4(x)
-    model_1 = kerasprune.model_utils.clean_copy(Model(inputs=input_1, outputs=output_1))
-
+    model_1 = utils.clean_copy(models.Model(input_1, output_1))
+    # Create the expected modified model
     x = dense_1(input_1)
     x = dense_2(x)
     x = dense_3(x)
     output_2 = dense_4(x)
-    model_2_exp = kerasprune.model_utils.clean_copy(Model(inputs=input_1, outputs=output_2))
-
-    # Replase dense_2 with dense_3 in model_1
-    layer_index = 3
-    model_2 = prune.insert_layer(model_1, model_1.layers[layer_index],
+    model_2_exp = utils.clean_copy(models.Model(input_1, output_2))
+    # Insert dense_3 before dense_4 in model_1
+    model_2 = prune.insert_layer(model_1,
+                                 model_1.get_layer(dense_4.name),
                                  dense_3)
     # Compare the modified model with the expected modified model
     assert compare_models(model_2, model_2_exp)
 
 
 def test_delete_layer_same_layer_outputs():
-    from keras.layers import Input, Dense, Conv2D, MaxPool2D, Flatten, Concatenate
-    from keras.models import Model
-    input_1 = Input(shape=(10,))
-    input_2 = Input(shape=(11,))
-    dense_1 = Dense(3)
-    dense_2 = Dense(3)
-    dense_3 = Dense(3)
-    dense_4 = Dense(1)
-
+    # Create all model layers
+    input_1 = layers.Input(shape=(10,))
+    dense_1 = layers.Dense(3)
+    dense_2 = layers.Dense(3)
+    dense_3 = layers.Dense(3)
+    dense_4 = layers.Dense(1)
+    # Create the base model
     x = dense_1(input_1)
     y = dense_2(x)
     x = dense_3(x)
     output_1 = dense_4(x)
     output_2 = dense_4(y)
-    model_1 = kerasprune.model_utils.clean_copy(Model(inputs=input_1, outputs=[output_1, output_2]))
-
+    model_1 = utils.clean_copy(models.Model(input_1, [output_1, output_2]))
+    # Create the expected modified model
     x = dense_1(input_1)
     y = dense_2(x)
-    # x = dense_3(x)
     output_1 = dense_4(x)
     output_2 = dense_4(y)
-    model_2_exp = kerasprune.model_utils.clean_copy(
-        Model(inputs=input_1, outputs=[output_1, output_2]))
-
-    model_2 = prune.delete_layer(model_1, model_1.get_layer(dense_3.name), copy=False)
-
+    model_2_exp = utils.clean_copy(models.Model(input_1, [output_1, output_2]))
+    # Delete layer dense_3
+    model_2 = prune.delete_layer(model_1,
+                                 model_1.get_layer(dense_3.name),
+                                 copy=False)
     # Compare the modified model with the expected modified model
     assert compare_models(model_2, model_2_exp)
-
-
 
 
 def compare_models(model_1, model_2):
@@ -350,19 +293,17 @@ def compare_models(model_1, model_2):
                           for (weight_1, weight_2) in
                           zip(model_1.get_weights(), model_2.get_weights())]))
     return config_match and weights_match
-# def delete_conv2d_filters(model, layer):
-#     return model
-#
-#
-# # content of test_expectation.py
-# @pytest.mark.parametrize("test_input,expected", [
-#     ("3+5", 8),
-#     ("2+4", 6),
-#     pytest.param("6*9", 42,
-#                  marks=pytest.mark.xfail),
-# ])
-# def test_eval(test_input, expected):
-#     assert eval(test_input) == expected
+
+
+def compare_models_seq(model_1, model_2):
+    config_1 = model_1.get_config()
+    config_2 = model_2.get_config()
+    config_match = (config_1 == config_2)
+    weights_match = (all([np.array_equal(weight_1, weight_2)
+                          for (weight_1, weight_2) in
+                          zip(model_1.get_weights(), model_2.get_weights())]))
+    return config_match and weights_match
+
 
 if __name__ == '__main__':
     pytest.main([__file__])
