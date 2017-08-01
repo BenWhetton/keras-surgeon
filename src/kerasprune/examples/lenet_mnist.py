@@ -60,7 +60,7 @@ def main():
 
     while True:
         [high_apoz_channels, apoz] = high_apoz(model, layer_index, mnist.validation.images)
-        model = delete_channels(model, layer_index, high_apoz_channels)
+        model = delete_channels(model, model.layers[layer_index], high_apoz_channels)
         model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
 
         loss = model.evaluate(mnist.validation.images, mnist.validation.labels, batch_size=128, verbose=2)
@@ -79,3 +79,5 @@ def main():
 
         loss = model.evaluate(mnist.validation.images, mnist.validation.labels, batch_size=128, verbose=2)
         print('model loss after retraining: ', loss, '\n')
+
+main()
