@@ -163,7 +163,7 @@ def _apply_delete_mask(layer, node_index, inbound_delete_masks):
             outbound_delete_mask = np.reshape(inbound_delete_masks, [-1, ])
             new_layer = layer
 
-        elif layer_class == 'Conv2D':
+        elif layer_class in ('Conv1D', 'Conv2D', 'Conv3D'):
             # Set outbound delete mask to ones.
             output_shape = layer.get_output_shape_at(node_index)
             outbound_delete_mask = np.ones(output_shape[1:], dtype=bool)
@@ -187,7 +187,7 @@ def _apply_delete_mask(layer, node_index, inbound_delete_masks):
             config['weights'] = weights
             new_layer = type(layer).from_config(config)
 
-        elif layer_class == 'MaxPooling2D':
+        elif layer_class in ('MaxPooling1D', 'MaxPooling2D', 'MaxPooling3D'):
             output_shape = layer.get_output_shape_at(node_index)
             if layer.data_format == 'channels_first':
                 index = [slice(None)] + [slice(None, dim_size, None) for
@@ -198,6 +198,21 @@ def _apply_delete_mask(layer, node_index, inbound_delete_masks):
             else:
                 raise ValueError('Invalid data format')
             outbound_delete_mask = inbound_delete_masks[index]
+            new_layer = layer
+
+        elif layer_class in ('Dropout', 'Activation', 'SpatialDropout1D',
+                             'SpatialDropout2D', 'SpatialDropout3D'):
+            outbound_delete_mask = inbound_delete_masks
+            new_layer = layer
+
+        elif layer_class == 'Reshape':
+            outbound_delete_mask = np.reshape(inbound_delete_masks,
+                                              layer.target_shape)
+            new_layer = layer
+
+        elif layer_class == 'Permute':
+            outbound_delete_mask = np.transpose(inbound_delete_masks,
+                                                layer.dims)
             new_layer = layer
 
         else:
