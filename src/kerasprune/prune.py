@@ -113,7 +113,9 @@ def rebuild_submodel(model_inputs,
                 node.inbound_layers, inbound_node_indices)])
 
             # Apply masks to the layer weights and call it on its inputs
-            new_layer, output_mask = _apply_delete_mask(layer, node_index, input_masks)
+            new_layer, output_mask = _apply_delete_mask(layer,
+                                                        node_index,
+                                                        input_masks)
             output = new_layer(utils.single_element(inputs))
 
             finished_nodes[node] = (output, output_mask)
@@ -167,15 +169,17 @@ def _apply_delete_mask(layer, node_index, inbound_delete_masks):
             # Set outbound delete mask to ones.
             output_shape = layer.get_output_shape_at(node_index)
             outbound_delete_mask = np.ones(output_shape[1:], dtype=bool)
-            # Conv layer: trim down inbound_delete_masks to filter shape
-            k_size = layer.kernel_size
             if layer.data_format == 'channels_first':
                 inbound_delete_masks = np.swapaxes(inbound_delete_masks, 0, -1)
+            # Conv layer: trim down inbound_delete_masks to filter shape
+            k_size = layer.kernel_size
             index = [slice(None, dim_size, None) for dim_size in k_size]
             inbound_delete_masks = inbound_delete_masks[index + [slice(None)]]
             # Delete unused weights to obtain new_weights
             weights = layer.get_weights()
-            # The mask size is equal to the
+            # Each deleted channel was connected to all of the channels in this
+            # layer; therefore, the mask must be repeated for each channel.
+            # `full_delete_mask`'s size: size(inbound_delete_mask) + [layer.filters]
             full_delete_mask = np.repeat(inbound_delete_masks[..., np.newaxis],
                                          weights[0].shape[-1],
                                          axis=-1)
@@ -527,16 +531,20 @@ def _delete_channel_weights(layer, channel_indices):
             'The layer must have either a "units" or "filters" '
             'property to be able to delete channels.')
 
-    if any([i + 1 > layer_config[channels_string] for i in channel_indices]):
+    channel_count = layer_config[channels_string]
+    if any([i + 1 > channel_count for i in channel_indices]):
         raise ValueError('Channels_index value(s) out of range. '
                          'This layer only has {0} channels.'
                          .format(layer_config[channels_string]))
 
+    print('Deleting {0}/{1} channels from layer: {2}'.format(
+        len(channel_indices), channel_count, layer_config['name']))
+    # Reduce layer channel count in config.
     layer_config[channels_string] -= len(channel_indices)
-
+    # Delete weights corresponding to deleted channels from config.
     weights = layer.get_weights()
     weights = [np.delete(w, channel_indices, axis=-1) for w in weights]
     layer_config['weights'] = weights
 
-    # create new layer from modified config
+    # Create new layer from modified config.
     return type(layer).from_config(layer_config)
