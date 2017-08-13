@@ -3,6 +3,7 @@
 import logging
 
 import numpy as np
+from keras import layers
 from keras.models import Model
 
 from kerasprune import utils
@@ -116,7 +117,7 @@ def rebuild_submodel(model_inputs,
             new_layer, output_mask = _apply_delete_mask(layer,
                                                         node_index,
                                                         input_masks)
-            output = new_layer(utils.single_element(inputs))
+            output = new_layer(utils.single_element(list(inputs)))
 
             finished_nodes[node] = (output, output_mask)
             logging.debug('layer complete: {0}'.format(layer.name))
@@ -129,101 +130,253 @@ def rebuild_submodel(model_inputs,
     return submodel_outputs, output_masks, finished_nodes
 
 
-def _apply_delete_mask(layer, node_index, inbound_delete_masks):
+def _apply_delete_mask(layer, node_index, inbound_masks):
     """Apply the inbound delete mask and return the outbound delete mask
 
     When specific channels in a layer or layer instance are deleted, the
     mask propagates information about which channels are affected to
     downstream layers.
     If the layer contains weights, the weights which were previously connected
-    to the deleted channels are deleted and outbound masks are set to ones
+    to the deleted channels are deleted and outbound masks are set to True
     since further downstream layers aren't affected.
+    If the layer does not contain weights, any transformations performed on the
+    layer's input are performed on the mask to create the outbound mask.
+
+    Arguments:
+        layer: A `Layer` object.
+        node_index: Indices of the nodes at which the delete mask is applied.
+        inbound_masks: Masks from previous layer(s).
+
+    Returns:
+        new_layer: Pass through `layer` if it has no weights, otherwise a new
+        `Layer` object with weights corresponding to the inbound mask deleted.
+        outbound_mask: Mask corresponding to `new_layer`.
     """
 
-    # if delete_mask is None, the deleted channels do not affect this layer or
-    # any layers above/downstream from it
-    if all(mask is None for mask in inbound_delete_masks):
+    # if delete_mask is None or all values are True, it does not affect this
+    # layer or any layers above/downstream from it
+    if all(mask is None for mask in inbound_masks):
         new_layer = layer
-        outbound_delete_mask = None
+        outbound_mask = None
     else:
-        inbound_delete_masks = utils.single_element(inbound_delete_masks)
+        inbound_masks = utils.single_element(inbound_masks)
         # otherwise, delete_mask.shape should be: layer.input_shape[1:]
         layer_class = layer.__class__.__name__
         if layer_class == 'InputLayer':
             raise RuntimeError('This should never get here!')
 
         elif layer_class == 'Dense':
+            if np.all(inbound_masks):
+                new_layer = layer
+            else:
+                weights = layer.get_weights()
+                weights[0] = weights[0][np.where(inbound_masks)[0], :]
+                config = layer.get_config()
+                config['weights'] = weights
+                new_layer = type(layer).from_config(config)
             output_shape = layer.get_output_shape_at(node_index)
-            weights = layer.get_weights()
-            weights[0] = weights[0][np.where(inbound_delete_masks)[0], :]
-            config = layer.get_config()
-            config['weights'] = weights
-            new_layer = type(layer).from_config(config)
-            outbound_delete_mask = np.ones(output_shape[1:], dtype=bool)
+            outbound_mask = np.ones(output_shape[1:], dtype=bool)
 
         elif layer_class == 'Flatten':
-            outbound_delete_mask = np.reshape(inbound_delete_masks, [-1, ])
+            outbound_mask = np.reshape(inbound_masks, [-1, ])
             new_layer = layer
 
         elif layer_class in ('Conv1D', 'Conv2D', 'Conv3D'):
+            if np.all(inbound_masks):
+                new_layer = layer
+            else:
+                data_format = getattr(layer, 'data_format', 'channels_last')
+                if data_format == 'channels_first':
+                    inbound_masks = np.swapaxes(inbound_masks, 0, -1)
+                # Conv layer: trim down inbound_masks to filter shape
+                k_size = layer.kernel_size
+                index = [slice(None, dim_size, None) for dim_size in k_size]
+                inbound_masks = inbound_masks[index + [slice(None)]]
+                # Delete unused weights to obtain new_weights
+                weights = layer.get_weights()
+                # Each deleted channel was connected to all of the channels in
+                # layer; therefore, the mask must be repeated for each channel.
+                # `delete_mask`'s size: size(inbound_mask) + [layer.filters]
+                # TODO: replace repeat with tile
+                delete_mask = np.repeat(inbound_masks[..., np.newaxis],
+                                        weights[0].shape[-1],
+                                        axis=-1)
+                new_shape = list(weights[0].shape)
+                new_shape[-2] = -1  # Weights always have channels_last
+                weights[0] = np.reshape(weights[0][delete_mask], new_shape)
+                # Instantiate new layer with new_weights
+                config = layer.get_config()
+                config['weights'] = weights
+                new_layer = type(layer).from_config(config)
             # Set outbound delete mask to ones.
             output_shape = layer.get_output_shape_at(node_index)
-            outbound_delete_mask = np.ones(output_shape[1:], dtype=bool)
-            if layer.data_format == 'channels_first':
-                inbound_delete_masks = np.swapaxes(inbound_delete_masks, 0, -1)
-            # Conv layer: trim down inbound_delete_masks to filter shape
-            k_size = layer.kernel_size
-            index = [slice(None, dim_size, None) for dim_size in k_size]
-            inbound_delete_masks = inbound_delete_masks[index + [slice(None)]]
-            # Delete unused weights to obtain new_weights
-            weights = layer.get_weights()
-            # Each deleted channel was connected to all of the channels in this
-            # layer; therefore, the mask must be repeated for each channel.
-            # `full_delete_mask`'s size: size(inbound_delete_mask) + [layer.filters]
-            full_delete_mask = np.repeat(inbound_delete_masks[..., np.newaxis],
-                                         weights[0].shape[-1],
-                                         axis=-1)
-            new_shape = list(weights[0].shape)
-            new_shape[-2] = -1  # weights data format is always channels_last
-            weights[0] = np.reshape(weights[0][full_delete_mask], new_shape)
-            # Instantiate new layer with new_weights
-            config = layer.get_config()
-            config['weights'] = weights
-            new_layer = type(layer).from_config(config)
+            outbound_mask = np.ones(output_shape[1:], dtype=bool)
 
-        elif layer_class in ('MaxPooling1D', 'MaxPooling2D', 'MaxPooling3D'):
+        elif layer_class in ('Cropping1D', 'Cropping2D', 'Cropping3D',
+                             'MaxPooling1D', 'MaxPooling2D', 'MaxPooling3D',
+                             'AveragePooling1D', 'AveragePooling2D',
+                             'AveragePooling3D'):
             output_shape = layer.get_output_shape_at(node_index)
-            if layer.data_format == 'channels_first':
-                index = [slice(None)] + [slice(None, dim_size, None) for
-                                         dim_size in output_shape[2:]]
-            elif layer.data_format == 'channels_last':
-                index = [slice(None, dim_size, None) for dim_size in
-                         output_shape[1:-1]] + [slice(None)]
+            data_format = getattr(layer, 'data_format', 'channels_last')
+            index = [slice(None, x, None) for x in output_shape[1:]]
+            if data_format == 'channels_first':
+                index[0] = slice(None)
+            elif data_format == 'channels_last':
+                index[-1] = slice(None)
             else:
                 raise ValueError('Invalid data format')
-            outbound_delete_mask = inbound_delete_masks[index]
+            outbound_mask = inbound_masks[index]
             new_layer = layer
 
-        elif layer_class in ('Dropout', 'Activation', 'SpatialDropout1D',
-                             'SpatialDropout2D', 'SpatialDropout3D'):
-            outbound_delete_mask = inbound_delete_masks
+        elif layer_class in ('UpSampling1D',
+                             'UpSampling2D',
+                             'UpSampling3D',
+                             'ZeroPadding1D',
+                             'ZeroPadding2D',
+                             'ZeroPadding3D'):
+            output_shape = layer.get_output_shape_at(node_index)
+            input_shape = layer.get_input_shape_at(node_index)
+            data_format = getattr(layer, 'data_format', 'channels_last')
+            # get output dimensions
+            # Get array with all singleton dimensions except channels dimension
+            index = [slice(1)] * (len(input_shape)-1)
+            tile_shape = list(output_shape[1:])
+            if data_format == 'channels_first':
+                index[0] = slice(None)
+                tile_shape[0] = 1
+            elif data_format == 'channels_last':
+                index[-1] = slice(None)
+                tile_shape[-1] = 1
+            else:
+                raise ValueError('Invalid data format')
+            channels_vector = inbound_masks[index]
+            # Repeat the array
+            outbound_mask = np.tile(channels_vector, tile_shape)
+            new_layer = layer
+
+        elif layer_class in ('GlobalMaxPooling1D',
+                             'GlobalMaxPooling2D',
+                             'GlobalAveragePooling1D',
+                             'GlobalAveragePooling2D'):
+            input_shape = layer.get_input_shape_at(node_index)
+            data_format = getattr(layer, 'data_format', 'channels_last')
+            # get output dimensions
+            # Get array with all singleton dimensions except channels dimension
+            index = [0]*(len(input_shape)-1)
+            if data_format == 'channels_first':
+                index[0] = slice(None)
+            elif data_format == 'channels_last':
+                index[-1] = slice(None)
+            else:
+                raise ValueError('Invalid data format')
+            channels_vector = inbound_masks[index]
+            # Repeat the array
+            outbound_mask = channels_vector
+            new_layer = layer
+
+        elif layer_class in ('Dropout',
+                             'Activation',
+                             'SpatialDropout1D',
+                             'SpatialDropout2D',
+                             'SpatialDropout3D',
+                             'ActivityRegularization',
+                             'Masking',
+                             'LeakyReLU',
+                             'PReLU',
+                             'ELU',
+                             'ThresholdedReLU',
+                             'GaussianNoise',
+                             'AlphaDropout'):
+            # Pass-through layers
+            outbound_mask = inbound_masks
             new_layer = layer
 
         elif layer_class == 'Reshape':
-            outbound_delete_mask = np.reshape(inbound_delete_masks,
-                                              layer.target_shape)
+            outbound_mask = np.reshape(inbound_masks,
+                                       layer.target_shape)
             new_layer = layer
 
         elif layer_class == 'Permute':
-            outbound_delete_mask = np.transpose(inbound_delete_masks,
-                                                layer.dims)
+            outbound_mask = np.transpose(inbound_masks,
+                                         [x-1 for x in layer.dims])
             new_layer = layer
 
+        elif layer_class == 'RepeatVector':
+            outbound_mask = np.repeat(
+                np.expand_dims(inbound_masks, 0),
+                layer.n,
+                axis=0)
+            new_layer = layer
+
+        elif layer_class == 'Embedding':
+            # Embedding will always be the first layer so it doesn't need to
+            # consider the inbound_delete_mask
+            outbound_mask = np.ones(layer.get_output_at(node_index)[1:],
+                                    dtype=bool)
+            new_layer = layer
+
+        elif layer_class in ('Multiply', 'Average', 'Maximum', 'Dot', ):
+            # The inputs must be the same size
+            if not utils.all_equal(inbound_masks):
+                ValueError('{0} layers must have the same size inputs. All '
+                           'inbound nodes must have the same channels deleted'
+                           .format(layer_class))
+            outbound_mask = inbound_masks[1]
+            new_layer = layer
+
+        elif layer_class == 'Concatenate':
+            axis = layer.axis
+            if layer.axis < 0:
+                axis = axis % len(layer.input_shape[0])
+            # the mask has one less dimension than the input (batch)
+            outbound_mask = np.concatenate(inbound_masks, axis=axis-1)
+            new_layer = layer
+
+        elif layer_class in ('SimpleRNN', 'GRU', 'LSTM'):
+            if np.all(inbound_masks):
+                new_layer = layer
+            else:
+                weights = layer.get_weights()
+                weights[0] = weights[0][np.where(inbound_masks[0, :])[0], :]
+                config = layer.get_config()
+                config['weights'] = weights
+                new_layer = type(layer).from_config(config)
+            output_shape = layer.get_output_shape_at(node_index)
+            outbound_mask = np.ones(output_shape[1:], dtype=bool)
+
+        elif layer_class == 'BatchNormalization':
+            outbound_mask = inbound_masks
+            # TODO: This breaks layer sharing. Does it matter for this class?
+            new_layer = layers.BatchNormalization(
+                axis=layer.axis,
+                momentum=layer.momentum,
+                epsilon=layer.epsilon,
+                center=layer.center,
+                scale=layer.scale,
+                beta_initializer=layer.beta_initializer,
+                gamma_initializer=layer.gamma_initializer,
+                moving_mean_initializer=layer.moving_mean_initializer,
+                moving_variance_initializer=layer.moving_variance_initializer,
+                beta_regularizer=layer.beta_regularizer,
+                gamma_regularizer=layer.gamma_regularizer,
+                beta_constraint=layer.beta_constraint,
+                gamma_constraint=layer.gamma_constraint)
+
         else:
+            # Not implemented:
+            # - Lambda
+            # - SeparableConv2D
+            # - Conv2DTranspose
+            # - LocallyConnected1D
+            # - LocallyConnected2D
+            # - TimeDistributed
+            # - Bidirectional
+            # -
+            # Warning/error checking needed for Reshape if channels axis split
             raise ValueError('"{0}" layers are currently '
                              'unsupported.'.format(layer_class))
 
-    return new_layer, outbound_delete_mask
+    return new_layer, outbound_mask
 
 
 def insert_layer(model, layer, new_layer, node_indices=None, copy=True):
@@ -448,7 +601,7 @@ def modify_model(model,
 
     replace_tensors = {}
     finished_nodes = {}
-    # For each node i.e. layer instance
+    # For each node associated with the layer a.k.a. each layer instance
     for node_index in sorted_indices:
         # Rebuild the model up to layer instance
         inbound_node = layer.inbound_nodes[node_index]
@@ -457,13 +610,13 @@ def modify_model(model,
 
         logging.debug('rebuilding model up to the layer before the insertion: '
                       '{0}'.format(layer))
-        (submodel_outputs, _, submodel_finished_outputs) = rebuild_submodel(
-            model.inputs,
-            submodel_output_layers,
-            submodel_output_layer_node_indices,
-            replace_tensors,
-            finished_nodes,
-            input_delete_masks)
+        (submodel_outputs, _, submodel_finished_outputs
+         ) = rebuild_submodel(model.inputs,
+                              submodel_output_layers,
+                              submodel_output_layer_node_indices,
+                              replace_tensors,
+                              finished_nodes,
+                              input_delete_masks)
         finished_nodes.update(submodel_finished_outputs)
 
         # Apply the modifier function.
@@ -496,18 +649,15 @@ def _make_delete_mask(layer, channel_indices):
 
     Returns:
         A Numpy ndarray of booleans of the same size as the output of layer.
-
     """
-    layer_config = layer.get_config()
-    if ('data_format' in layer_config.keys()) and \
-            (layer_config['data_format'] == 'channels_first'):
-        output_channels_axis = 0
-    else:
-        output_channels_axis = -1
+    data_format = getattr(layer, 'data_format', 'channels_last')
     new_delete_mask = np.ones(layer.output_shape[1:], dtype=bool)
-    index = [slice(None)] * new_delete_mask.ndim
-    index[output_channels_axis] = channel_indices
-    new_delete_mask[tuple(index)] = False
+    if data_format == 'channels_first':
+        new_delete_mask[channel_indices, ...] = False
+    elif data_format == 'channels_last':
+        new_delete_mask[..., channel_indices] = False
+    else:
+        ValueError('Invalid data_format property value')
     return new_delete_mask
 
 
@@ -522,29 +672,82 @@ def _delete_channel_weights(layer, channel_indices):
         A new layer with the channels and corresponding weights deleted.
     """
     layer_config = layer.get_config()
-    if 'units' in layer_config.keys():
-        channels_string = 'units'
-    elif 'filters' in layer_config.keys():
-        channels_string = 'filters'
-    else:
-        raise ValueError(
-            'The layer must have either a "units" or "filters" '
-            'property to be able to delete channels.')
-
-    channel_count = layer_config[channels_string]
+    channels_attr = utils.get_channels_attr(layer)
+    channel_count = layer_config[channels_attr]
+    # Check inputs
     if any([i + 1 > channel_count for i in channel_indices]):
         raise ValueError('Channels_index value(s) out of range. '
                          'This layer only has {0} channels.'
-                         .format(layer_config[channels_string]))
-
+                         .format(channel_count))
     print('Deleting {0}/{1} channels from layer: {2}'.format(
-        len(channel_indices), channel_count, layer_config['name']))
+        len(channel_indices), channel_count, layer.name))
+    # numpy.delete ignores negative indices in lists: make all indices positive
+    channel_indices = [i % channel_count for i in channel_indices]
+
     # Reduce layer channel count in config.
-    layer_config[channels_string] -= len(channel_indices)
+    layer_config[channels_attr] -= len(channel_indices)
+
     # Delete weights corresponding to deleted channels from config.
-    weights = layer.get_weights()
-    weights = [np.delete(w, channel_indices, axis=-1) for w in weights]
+    # For all except recurrent layers, the weights' channels dimension is last.
+    # Each recurrent layer type has a different internal weights layout.
+    if layer.__class__.__name__ == 'SimpleRNN':
+        weights = [np.delete(w, channel_indices, axis=-1)
+                   for w in layer.get_weights()]
+        weights[1] = np.delete(weights[1], channel_indices, axis=0)
+    elif layer.__class__.__name__ == 'GRU':
+        # Repeat the channel indices for all internal GRU weights.
+        channel_indices_gru = [layer.units * m + i for m in range(3)
+                               for i in channel_indices]
+        weights = [np.delete(w, channel_indices_gru, axis=-1)
+                   for w in layer.get_weights()]
+        weights[1] = np.delete(weights[1], channel_indices, axis=0)
+    elif layer.__class__.__name__ == 'LSTM':
+        # Repeat the channel indices for all interal LSTM weights.
+        channel_indices_lstm = [layer.units*m + i for m in range(4)
+                                for i in channel_indices]
+        weights = [np.delete(w, channel_indices_lstm, axis=-1)
+                   for w in layer.get_weights()]
+        weights[1] = np.delete(weights[1], channel_indices, axis=0)
+    else:
+        weights = [np.delete(w, channel_indices, axis=-1)
+                   for w in layer.get_weights()]
     layer_config['weights'] = weights
 
     # Create new layer from modified config.
     return type(layer).from_config(layer_config)
+
+
+# def _delete_channel_weights_wrapper(layer, channel_indices):
+#     layer_config = layer.get_config()
+#     channels_attr = utils.get_channels_attr(layer)
+#     channel_count = layer_config[channels_attr]
+#
+#     # Create new layer from modified config.
+#     layer_config.update(_delete_channel_weights_2(layer.weights,
+#                                                   channel_indices,
+#                                                   channel_count,
+#                                                   channels_attr,
+#                                                   layer.name))
+#     return type(layer).from_config(layer_config)
+#
+#
+# def _delete_channel_weights_2(weights,
+#                               channel_indices,
+#                               channel_count,
+#                               channels_attr,
+#                               layer_name):
+#     # Input checking
+#     if any([i + 1 > channel_count for i in channel_indices]):
+#         raise ValueError('Channels_index value(s) out of range. '
+#                          'This layer only has {0} channels.'
+#                          .format(channel_count))
+#     print('Deleting {0}/{1} channels from layer: {2}'.format(
+#         len(channel_indices), channel_count, layer_name))
+#     # numpy.delete ignores negative indices in lists: make all indices positi
+#     channel_indices = [i % channel_count for i in channel_indices]
+#     # Reduce layer channel count in config.
+#     config = {channels_attr: channel_count - len(channel_indices),
+#               # Delete weights corresponding to deleted channels from config.
+#               'weights': [np.delete(w, channel_indices, axis=-1)
+#                           for w in weights]}
+#     return config

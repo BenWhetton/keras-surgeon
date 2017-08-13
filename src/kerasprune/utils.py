@@ -1,4 +1,6 @@
 """Utilities used across other modules."""
+import numpy as np
+
 
 def clean_copy(model):
     """Returns a copy of the model without other model uses of its layers."""
@@ -6,6 +8,18 @@ def clean_copy(model):
     new_model = model.__class__.from_config(model.get_config())
     new_model.set_weights(weights)
     return new_model
+
+
+def get_channels_attr(layer):
+    # TODO: try getattr(layer, 'units', getattr(layer, 'filters')) if useful
+    layer_config = layer.get_config()
+    if 'units' in layer_config.keys():
+        channels_attr = 'units'
+    elif 'filters' in layer_config.keys():
+        channels_attr = 'filters'
+    else:
+        raise ValueError('This layer has not got any channels.')
+    return channels_attr
 
 
 def get_node_depth(model, node):
@@ -68,8 +82,8 @@ def find_activation_layer(model, layer_index):
                      for layer_config in model_config]
     try:
         next_layer = next(i for i in range(layer_index + 1, len(layer_classes))
-                                  if layer_classes[i] not in
-                                  {'Flatten', 'Activation', 'MaxPooling2D'})
+                          if layer_classes[i] not in
+                          {'Flatten', 'Activation', 'MaxPooling2D'})
     except StopIteration:
         print('No layers with weights found after the chosen layer.'
               'Cannot reduce the output channels.')
@@ -107,3 +121,13 @@ def single_element(x):
 
 def bool_to_index(x):
     return [i for i in range(len(x)) if x]
+
+
+def all_equal(iterator):
+    try:
+        iterator = iter(iterator)
+        first = next(iterator)
+        return all(
+            np.array_equal(first, rest) for rest in iterator)
+    except StopIteration:
+        return True
