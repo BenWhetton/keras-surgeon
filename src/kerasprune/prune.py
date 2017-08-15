@@ -5,6 +5,7 @@ import logging
 import numpy as np
 from keras import layers
 from keras.models import Model
+from keras.engine.topology import Node
 
 from kerasprune import utils
 
@@ -65,58 +66,55 @@ def rebuild_submodel(model_inputs,
     if not replace_tensors:
         replace_tensors = {}
 
-    def _rebuild_rec(layer, node_index):
+    def _rebuild_rec(node):
         """Rebuilds the instance of layer and all deeper layers recursively.
 
         Calculates the output tensor by applying this layer to this node.
         All tensors deeper in the network are also calculated
 
         Args:
-            layer: the layer to rebuild
-            node_index: The index of the next inbound node in the network. 
-                        The layer will be called on the output of this node to 
-                        obtain the output.
-                        inbound_node = layer.inbound_nodes[node_index].
+            node(Node): Node to rebuild up to
         Returns:
             The output of the layer on the data stream indicated by node_index.
 
         """
+        layer = node.outbound_layer
         logging.debug('getting inputs for: {0}'.format(layer.name))
         # get the inbound node
-        node = layer.inbound_nodes[node_index]
-        layer_output = layer.get_output_at(node_index)
-        if layer_output in replace_tensors.keys():
+        # node = layer.inbound_nodes[node_index]
+        # TODO: Assumes that nodes only have a single output tensor. Check!
+        node_output = utils.single_element(node.output_tensors)
+        if node_output in replace_tensors.keys():
             # Check for replaced tensors before checking finished nodes
             logging.debug('bottomed out at replaced output: {0}'.format(
-                layer_output))
-            output, output_mask = replace_tensors[layer_output]
+                node_output))
+            output, output_mask = replace_tensors[node_output]
             return output, output_mask
 
         elif node in finished_nodes.keys():
             logging.debug('reached finished node: {0}'.format(node))
             return finished_nodes[node]
 
+        # TODO: Fix this, will it be reached with the node argument?
         elif not layer:
             raise ValueError('The graph traversal has reached an empty layer.')
 
-        elif layer_output in model_inputs:
+        elif node_output in model_inputs:
             logging.debug('bottomed out at a model input')
-            output_mask = input_delete_masks[model_inputs.index(layer_output)]
-            return layer_output, output_mask
+            output_mask = input_delete_masks[model_inputs.index(node_output)]
+            return node_output, output_mask
 
         else:
             # Recursively compute this layer's inputs and input masks from each
             # inbound layer at this node
-            inbound_node_indices = node.node_indices
+            inbound_nodes = [node.inbound_layers[i].inbound_nodes[node_index]
+                             for i, node_index in enumerate(node.node_indices)]
             logging.debug('inbound_layers: {0}'.format([layer.name for layer in
                                                         node.inbound_layers]))
-            inputs, input_masks = zip(*[_rebuild_rec(l, i) for l, i in zip(
-                node.inbound_layers, inbound_node_indices)])
+            inputs, input_masks = zip(*[_rebuild_rec(n) for n in inbound_nodes])
 
             # Apply masks to the layer weights and call it on its inputs
-            new_layer, output_mask = _apply_delete_mask(layer,
-                                                        node_index,
-                                                        input_masks)
+            new_layer, output_mask = _apply_delete_mask(node, input_masks)
             output = new_layer(utils.single_element(list(inputs)))
 
             finished_nodes[node] = (output, output_mask)
@@ -125,12 +123,14 @@ def rebuild_submodel(model_inputs,
 
     # Call the recursive _rebuild_rec method to rebuild the submodel up to each
     # output layer
-    submodel_outputs, output_masks = zip(*[_rebuild_rec(l, i) for l, i in zip(
-        output_layers, output_layers_node_indices)])
+    output_nodes = [output_layers[i].inbound_nodes[node_index]
+                    for i, node_index in enumerate(output_layers_node_indices)]
+    submodel_outputs, output_masks = zip(*[_rebuild_rec(n)
+                                           for n in output_nodes])
     return submodel_outputs, output_masks, finished_nodes
 
 
-def _apply_delete_mask(layer, node_index, inbound_masks):
+def _apply_delete_mask(node, inbound_masks):
     """Apply the inbound delete mask and return the outbound delete mask
 
     When specific channels in a layer or layer instance are deleted, the
@@ -143,8 +143,7 @@ def _apply_delete_mask(layer, node_index, inbound_masks):
     layer's input are performed on the mask to create the outbound mask.
 
     Arguments:
-        layer: A `Layer` object.
-        node_index: Indices of the nodes at which the delete mask is applied.
+        node(Node):
         inbound_masks: Masks from previous layer(s).
 
     Returns:
@@ -155,10 +154,14 @@ def _apply_delete_mask(layer, node_index, inbound_masks):
 
     # if delete_mask is None or all values are True, it does not affect this
     # layer or any layers above/downstream from it
+    layer = node.outbound_layer
     if all(mask is None for mask in inbound_masks):
         new_layer = layer
         outbound_mask = None
     else:
+        output_shape = utils.single_element(node.output_shapes)
+        input_shape = utils.single_element(node.input_shapes)
+        data_format = getattr(layer, 'data_format', 'channels_last')
         inbound_masks = utils.single_element(inbound_masks)
         # otherwise, delete_mask.shape should be: layer.input_shape[1:]
         layer_class = layer.__class__.__name__
@@ -174,7 +177,6 @@ def _apply_delete_mask(layer, node_index, inbound_masks):
                 config = layer.get_config()
                 config['weights'] = weights
                 new_layer = type(layer).from_config(config)
-            output_shape = layer.get_output_shape_at(node_index)
             outbound_mask = np.ones(output_shape[1:], dtype=bool)
 
         elif layer_class == 'Flatten':
@@ -185,7 +187,6 @@ def _apply_delete_mask(layer, node_index, inbound_masks):
             if np.all(inbound_masks):
                 new_layer = layer
             else:
-                data_format = getattr(layer, 'data_format', 'channels_last')
                 if data_format == 'channels_first':
                     inbound_masks = np.swapaxes(inbound_masks, 0, -1)
                 # Conv layer: trim down inbound_masks to filter shape
@@ -209,15 +210,12 @@ def _apply_delete_mask(layer, node_index, inbound_masks):
                 config['weights'] = weights
                 new_layer = type(layer).from_config(config)
             # Set outbound delete mask to ones.
-            output_shape = layer.get_output_shape_at(node_index)
             outbound_mask = np.ones(output_shape[1:], dtype=bool)
 
         elif layer_class in ('Cropping1D', 'Cropping2D', 'Cropping3D',
                              'MaxPooling1D', 'MaxPooling2D', 'MaxPooling3D',
                              'AveragePooling1D', 'AveragePooling2D',
                              'AveragePooling3D'):
-            output_shape = layer.get_output_shape_at(node_index)
-            data_format = getattr(layer, 'data_format', 'channels_last')
             index = [slice(None, x, None) for x in output_shape[1:]]
             if data_format == 'channels_first':
                 index[0] = slice(None)
@@ -234,9 +232,6 @@ def _apply_delete_mask(layer, node_index, inbound_masks):
                              'ZeroPadding1D',
                              'ZeroPadding2D',
                              'ZeroPadding3D'):
-            output_shape = layer.get_output_shape_at(node_index)
-            input_shape = layer.get_input_shape_at(node_index)
-            data_format = getattr(layer, 'data_format', 'channels_last')
             # get output dimensions
             # Get array with all singleton dimensions except channels dimension
             index = [slice(1)] * (len(input_shape)-1)
@@ -258,8 +253,6 @@ def _apply_delete_mask(layer, node_index, inbound_masks):
                              'GlobalMaxPooling2D',
                              'GlobalAveragePooling1D',
                              'GlobalAveragePooling2D'):
-            input_shape = layer.get_input_shape_at(node_index)
-            data_format = getattr(layer, 'data_format', 'channels_last')
             # get output dimensions
             # Get array with all singleton dimensions except channels dimension
             index = [0]*(len(input_shape)-1)
@@ -311,8 +304,8 @@ def _apply_delete_mask(layer, node_index, inbound_masks):
         elif layer_class == 'Embedding':
             # Embedding will always be the first layer so it doesn't need to
             # consider the inbound_delete_mask
-            outbound_mask = np.ones(layer.get_output_at(node_index)[1:],
-                                    dtype=bool)
+            outbound_mask = np.ones(utils.single_element(node.output_tensors)
+                                    [1:], dtype=bool)
             new_layer = layer
 
         elif layer_class in ('Multiply', 'Average', 'Maximum', 'Dot', ):
@@ -341,14 +334,11 @@ def _apply_delete_mask(layer, node_index, inbound_masks):
                 config = layer.get_config()
                 config['weights'] = weights
                 new_layer = type(layer).from_config(config)
-            output_shape = layer.get_output_shape_at(node_index)
             outbound_mask = np.ones(output_shape[1:], dtype=bool)
 
         elif layer_class == 'BatchNormalization':
             outbound_mask = inbound_masks
             # TODO: This breaks layer sharing. Does it matter for this class?
-            input_shape = list(layer.get_input_shape_at(node_index))
-            data_format = getattr(layer, 'data_format', 'channels_last')
             # get output dimensions
             # Get array with all singleton dimensions except channels dimension
             index = [0] * (len(input_shape))
@@ -360,8 +350,9 @@ def _apply_delete_mask(layer, node_index, inbound_masks):
             weights = [np.delete(w, channel_indices, axis=-1)
                        for w in layer.get_weights()]
             new_layer = layers.BatchNormalization.from_config(layer.get_config())
-            input_shape[new_layer.axis] -= len(channel_indices)
-            new_layer.build(input_shape)
+            new_input_shape = list(input_shape)
+            new_input_shape[new_layer.axis] -= len(channel_indices)
+            new_layer.build(new_input_shape)
             new_layer.set_weights(weights)
             # new_layer = layers.BatchNormalization(
             #     axis=layer.axis,
@@ -603,11 +594,103 @@ def modify_model(model,
     # If no nodes are specified, apply the modification to all of the layer's
     # inbound nodes which are contained in the model.
     if not node_indices:
-        node_indices = utils.bool_to_index(
-            utils.check_nodes_in_model(model, layer.inbound_nodes))
+        node_indices = utils.find_nodes_in_model(model, layer)
     if copy:
         model = utils.clean_copy(model)
         layer = model.get_layer(layer.get_config()['name'])
+
+    # Order the nodes by depth from input to output to ensure that the model is
+    # rebuilt in the correct order.
+    node_depths = [utils.get_node_depth(model, layer.inbound_nodes[node_index])
+                   for node_index in node_indices]
+    sorted_indices = reversed(utils.sort_x_by_y(node_indices, node_depths))
+
+    replace_tensors = {}
+    finished_nodes = {}
+    # For each node associated with the layer a.k.a. each layer instance
+    for node_index in sorted_indices:
+        # Rebuild the model up to layer instance
+        inbound_node = layer.inbound_nodes[node_index]
+        submodel_output_layers = inbound_node.inbound_layers
+        submodel_output_layer_node_indices = inbound_node.node_indices
+
+        logging.debug('rebuilding model up to the layer before the insertion: '
+                      '{0}'.format(layer))
+        (submodel_outputs, _, submodel_finished_outputs
+         ) = rebuild_submodel(model.inputs,
+                              submodel_output_layers,
+                              submodel_output_layer_node_indices,
+                              replace_tensors,
+                              finished_nodes,
+                              input_delete_masks)
+        finished_nodes.update(submodel_finished_outputs)
+
+        # Apply the modifier function.
+        replace_tensors.update(modifier_function(layer,
+                                                 node_index,
+                                                 submodel_outputs))
+
+    # Rebuild the rest of the model from the modified nodes to the outputs.
+    new_outputs, _, _ = rebuild_submodel(model.inputs,
+                                         model.output_layers,
+                                         model.output_layers_node_indices,
+                                         replace_tensors,
+                                         finished_nodes,
+                                         input_delete_masks)
+    new_model = Model(model.inputs, new_outputs)
+    if copy:
+        return utils.clean_copy(new_model)
+    else:
+        return new_model
+
+
+def modify_model_multiple(model,
+                          layers,
+                          modifier_function,
+                          node_indices_list=None,
+                          copy=None,
+                          input_delete_masks=None):
+    """Helper function to modify a model around instances of a specified layer.
+
+    This method applies a modifier function to each node specified by the
+    combination of layer and node_indices.
+    The modifier function performs some operations and returns a mapping of
+    original tensors to the resulting replacement tensors.
+    See uses of this method as examples.
+
+    Arguments:
+        model: Model object to be modified.
+        layer: Layer to be modified.
+        modifier_function: Function to be applied to each specified node.
+        node_indices: Indices of the nodes to be modified.
+        copy: If True, the model will be copied before and after
+              manipulation. This keeps both the old and new models' layers
+              clean of each-others data-streams.
+        input_delete_masks: Boolean masks to specify input channels (used by
+                            delete_channels).
+
+    Returns:
+        A modified model object
+
+    """
+    # Check inputs
+    for layer in layers:
+        if layer not in model.layers:
+            raise ValueError('layer is not a valid Layer in model.')
+    # If no nodes are specified, apply the modification to all of the layer's
+    # inbound nodes which are contained in the model.
+    for node_indices in node_indices_list:
+        if not node_indices:
+            node_indices = utils.bool_to_index(
+                utils.check_nodes_in_model(model, layer.inbound_nodes))
+    if copy:
+        model = utils.clean_copy(model)
+        layer = model.get_layer(layer.get_config()['name'])
+
+    # The layers instances need to be added from deepest to shallowest
+    # Layer instances need to be sorted: (layer, node_index)
+    get_instance_depth = utils.get_node_depth
+    # sorted_layer_instances = sorted(layer_instances, key=)
 
     # Order the nodes by depth from input to output to ensure that the model is
     # rebuilt in the correct order.
