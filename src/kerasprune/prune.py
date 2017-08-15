@@ -347,20 +347,36 @@ def _apply_delete_mask(layer, node_index, inbound_masks):
         elif layer_class == 'BatchNormalization':
             outbound_mask = inbound_masks
             # TODO: This breaks layer sharing. Does it matter for this class?
-            new_layer = layers.BatchNormalization(
-                axis=layer.axis,
-                momentum=layer.momentum,
-                epsilon=layer.epsilon,
-                center=layer.center,
-                scale=layer.scale,
-                beta_initializer=layer.beta_initializer,
-                gamma_initializer=layer.gamma_initializer,
-                moving_mean_initializer=layer.moving_mean_initializer,
-                moving_variance_initializer=layer.moving_variance_initializer,
-                beta_regularizer=layer.beta_regularizer,
-                gamma_regularizer=layer.gamma_regularizer,
-                beta_constraint=layer.beta_constraint,
-                gamma_constraint=layer.gamma_constraint)
+            input_shape = list(layer.get_input_shape_at(node_index))
+            data_format = getattr(layer, 'data_format', 'channels_last')
+            # get output dimensions
+            # Get array with all singleton dimensions except channels dimension
+            index = [0] * (len(input_shape))
+            index[layer.axis] = slice(None)
+            index = index[1:]
+            # TODO: this is a bit crap, maybe use channel indices everywhere
+            # instead of masks
+            channel_indices = np.where(inbound_masks[index] == False)[0]
+            weights = [np.delete(w, channel_indices, axis=-1)
+                       for w in layer.get_weights()]
+            new_layer = layers.BatchNormalization.from_config(layer.get_config())
+            input_shape[new_layer.axis] -= len(channel_indices)
+            new_layer.build(input_shape)
+            new_layer.set_weights(weights)
+            # new_layer = layers.BatchNormalization(
+            #     axis=layer.axis,
+            #     momentum=layer.momentum,
+            #     epsilon=layer.epsilon,
+            #     center=layer.center,
+            #     scale=layer.scale,
+            #     beta_initializer=layer.beta_initializer,
+            #     gamma_initializer=layer.gamma_initializer,
+            #     moving_mean_initializer=layer.moving_mean_initializer,
+            #     moving_variance_initializer=layer.moving_variance_initializer,
+            #     beta_regularizer=layer.beta_regularizer,
+            #     gamma_regularizer=layer.gamma_regularizer,
+            #     beta_constraint=layer.beta_constraint,
+            #     gamma_constraint=layer.gamma_constraint)
 
         else:
             # Not implemented:
