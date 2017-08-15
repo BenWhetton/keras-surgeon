@@ -1,5 +1,7 @@
 """Utilities used across other modules."""
 import numpy as np
+from keras.layers import Layer
+from keras.activations import linear
 
 
 def clean_copy(model):
@@ -73,37 +75,41 @@ def get_model_nodes(model):
     return [node for v in model.nodes_by_depth.values() for node in v]
 
 
-def find_activation_layer(model, layer_index):
-    if model.layers[layer_index].__class__.__name__ in ('Conv2D', 'Dense'):
-        assert ValueError('This functionality is only implemented for Conv2D '
-                          'and Dense layers.')
-    model_config = model.get_config()
-    layer_classes = [layer_config['class_name']
-                     for layer_config in model_config]
-    try:
-        next_layer = next(i for i in range(layer_index + 1, len(layer_classes))
-                          if layer_classes[i] not in
-                          {'Flatten', 'Activation', 'MaxPooling2D'})
-    except StopIteration:
-        print('No layers with weights found after the chosen layer.'
-              'Cannot reduce the output channels.')
-        raise
+def find_activation_layer(layer, node_index):
+    """
 
-    try:
-        activation_layer = next(i for i in range(layer_index, next_layer)
-                                if ('activation' in model_config[i]['config'].keys())
-                                & (model_config[i]['config']['activation'] != 'linear'))
-    except StopIteration:
-        print('All activations from the chosen layer onwards are linear.'
-              'This functionality requires a nonlinear activation function'
-              'to be present.')
-        raise
-
-    if not model_config[activation_layer]['config']['activation'] == 'relu':
-        assert ValueError('This functionality only works for layers using or '
-                          'followed by a "relu" activation.')
-
-    return activation_layer
+    Args:
+        layer(Layer):
+        node_index:
+    """
+    output_shape = layer.get_output_shape_at(node_index)
+    temp_layer = layer
+    node = temp_layer.inbound_nodes[node_index]
+    # Loop will be broken by an error if an output layer is encountered
+    while True:
+        if temp_layer.weights and (
+                not temp_layer.__class__.__name__.startswith('Global')):
+            AttributeError('There is no nonlinear activation layer between {0}'
+                           ' and {1}'.format(layer.name, temp_layer.name))
+        activation = getattr(temp_layer, 'activation', linear)
+        if activation.__name__ != 'linear':
+            if temp_layer.get_output_shape_at(node_index) != output_shape:
+                ValueError('The activation layer ({0}), does not have the same'
+                           ' output shape as {1]'.format(temp_layer.name,
+                                                         layer.name))
+            return temp_layer, node_index
+        # move to the next layer in the datastream
+        node_indices = [i if node.outbound_layer.inbound_nodes.index(node) in
+                        node.outbound_layer.outbound_nodes[i].node_indices
+                        else None for i in
+                        range(len(node.outbound_layer.outbound_nodes))]
+        if len(node_indices) > 1:
+            ValueError('The model must not branch between the chose layer and '
+                       'the activation layer.')
+        else:
+            node_index = node_indices[0]
+            node = node.outbound_layer.outbound_nodes[node_index]
+        temp_layer = node.outbound_layer
 
 
 def sort_x_by_y(x, y):
