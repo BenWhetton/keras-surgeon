@@ -35,8 +35,9 @@ def rebuild_sequential(layers):
 
 
 def rebuild_submodel(model_inputs,
-                     output_layers,
-                     output_layers_node_indices,
+                     # output_layers,
+                     # output_layers_node_indices,
+                     output_nodes,
                      replace_tensors=None,
                      finished_nodes=None,
                      input_delete_masks=None):
@@ -47,8 +48,9 @@ def rebuild_submodel(model_inputs,
 
     Arguments:
         model_inputs: List of the submodel's input tensor(s).
-        output_layers: List of the submodel's output layers(s).
-        output_layers_node_indices: List of indices of output layers' nodes.
+        output_nodes(list[Node]): List of the submodel's output (final) node(s).
+        # output_layers: List of the submodel's output layers(s).
+        # output_layers_node_indices: List of indices of output layers' nodes.
         replace_tensors: Dict mapping model tensors to replacement tensors.
         finished_nodes: Dict mapping finished nodes to lists of their outputs
                         and output masks.
@@ -123,8 +125,8 @@ def rebuild_submodel(model_inputs,
 
     # Call the recursive _rebuild_rec method to rebuild the submodel up to each
     # output layer
-    output_nodes = [output_layers[i].inbound_nodes[node_index]
-                    for i, node_index in enumerate(output_layers_node_indices)]
+    # output_nodes = [output_layers[i].inbound_nodes[node_index]
+    #                 for i, node_index in enumerate(output_layers_node_indices)]
     submodel_outputs, output_masks = zip(*[_rebuild_rec(n)
                                            for n in output_nodes])
     return submodel_outputs, output_masks, finished_nodes
@@ -414,7 +416,7 @@ def insert_layer(model, layer, new_layer, node_indices=None, copy=True):
     # No setup required
 
     # Define the function to be applied to the inputs to the layer at each node
-    def _insert_layer(this_layer, node_index, inputs):
+    def _insert_layer(node, inputs):
         # This will not work for nodes with multiple inbound layers
         # The previous layer and node must also be specified to enable this
         # functionality.
@@ -424,7 +426,6 @@ def insert_layer(model, layer, new_layer, node_indices=None, copy=True):
         # Call the new layer on the inbound layer's output
         new_output = new_layer(utils.single_element(inputs))
         # Replace the inbound layer's output with the new layer's output
-        node = this_layer.inbound_nodes[node_index]
         old_output = node.inbound_layers[0].get_output_at(node.node_indices[0])
         replace_tensor = {old_output: (new_output, None)}
         return replace_tensor
@@ -442,12 +443,12 @@ def replace_layer(model, layer, new_layer, node_indices=None, copy=True):
     # No setup required
 
     # Define the function to be applied to the inputs to the layer at each node
-    def _replace_layer(this_layer, node_index, inputs):
+    def _replace_layer(node, inputs):
         # Call the new layer on the rebuild submodel's inputs
         new_output = new_layer(utils.single_element(inputs))
 
         # Replace the original layer's output with the new layer's output
-        replaced_layer_output = this_layer.get_output_at(node_index)
+        replaced_layer_output = utils.single_element(node.output_tensors)
         replace_inputs = {replaced_layer_output: (new_output, None)}
         return replace_inputs
 
@@ -479,13 +480,13 @@ def delete_layer(model, layer, node_indices=None, copy=True):
     # No setup required
 
     # Define the function to be applied to the inputs to the layer at each node
-    def _delete_layer(this_layer, node_index, inputs):
+    def _delete_layer(node, inputs):
         # Skip the deleted layer by replacing its outputs with it inputs
         if len(inputs) >= 2:
             raise ValueError('Cannot insert new layer at node with multiple '
                              'inbound layers.')
         inputs = utils.single_element(inputs)
-        deleted_layer_output = this_layer.get_output_at(node_index)
+        deleted_layer_output = utils.single_element(node.output_tensors)
         replace_inputs = {deleted_layer_output: (inputs, None)}
         return replace_inputs
 
@@ -541,11 +542,11 @@ def delete_channels(model, layer, channels, node_indices=None, copy=None):
                                   dtype=bool) for node in model.inbound_nodes]
 
     # Define the function to be applied to the inputs to the layer at each node
-    def _delete_inbound_weights(this_layer, node_index, inputs):
+    def _delete_inbound_weights(node, inputs):
         # Call the new layer on the rebuild submodel's inputs
         new_output = new_layer(utils.single_element(inputs))
         # Replace the original layer's output with the modified layer's output
-        deleted_layer_output = this_layer.get_output_at(node_index)
+        deleted_layer_output = utils.single_element(node.output_tensors)
         replace_inputs = {deleted_layer_output: (new_output, new_delete_mask)}
         return replace_inputs
 
@@ -599,41 +600,41 @@ def modify_model(model,
         model = utils.clean_copy(model)
         layer = model.get_layer(layer.get_config()['name'])
 
+    layer_nodes = [layer.inbound_nodes[i] for i in node_indices]
     # Order the nodes by depth from input to output to ensure that the model is
     # rebuilt in the correct order.
-    node_depths = [utils.get_node_depth(model, layer.inbound_nodes[node_index])
-                   for node_index in node_indices]
-    sorted_indices = reversed(utils.sort_x_by_y(node_indices, node_depths))
+    sorted_nodes = sorted(layer_nodes,
+                          key=lambda x: utils.get_node_depth(model, x),
+                          reverse=True)
 
     replace_tensors = {}
     finished_nodes = {}
     # For each node associated with the layer a.k.a. each layer instance
-    for node_index in sorted_indices:
+    # for node_index in sorted_indices:
+    for node in sorted_nodes:
         # Rebuild the model up to layer instance
-        inbound_node = layer.inbound_nodes[node_index]
-        submodel_output_layers = inbound_node.inbound_layers
-        submodel_output_layer_node_indices = inbound_node.node_indices
+        # inbound_node = layer.inbound_nodes[node_index]
+        sub_output_nodes = [node.inbound_layers[i].inbound_nodes[node_index]
+                            for i, node_index in enumerate(node.node_indices)]
 
         logging.debug('rebuilding model up to the layer before the insertion: '
                       '{0}'.format(layer))
         (submodel_outputs, _, submodel_finished_outputs
          ) = rebuild_submodel(model.inputs,
-                              submodel_output_layers,
-                              submodel_output_layer_node_indices,
+                              sub_output_nodes,
                               replace_tensors,
                               finished_nodes,
                               input_delete_masks)
         finished_nodes.update(submodel_finished_outputs)
 
         # Apply the modifier function.
-        replace_tensors.update(modifier_function(layer,
-                                                 node_index,
-                                                 submodel_outputs))
+        replace_tensors.update(modifier_function(node, submodel_outputs))
 
     # Rebuild the rest of the model from the modified nodes to the outputs.
+    output_nodes = [model.output_layers[i].inbound_nodes[node_index]
+                    for i, node_index in enumerate(model.output_layers_node_indices)]
     new_outputs, _, _ = rebuild_submodel(model.inputs,
-                                         model.output_layers,
-                                         model.output_layers_node_indices,
+                                         output_nodes,
                                          replace_tensors,
                                          finished_nodes,
                                          input_delete_masks)
