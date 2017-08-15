@@ -97,9 +97,9 @@ def rebuild_submodel(model_inputs,
             logging.debug('reached finished node: {0}'.format(node))
             return finished_nodes[node]
 
-        # TODO: Fix this, will it be reached with the node argument?
-        elif not layer:
-            raise ValueError('The graph traversal has reached an empty layer.')
+        # # TODO: Fix this, will it be reached with the node argument?
+        # elif not layer:
+        #     raise ValueError('The graph traversal has reached an empty layer.')
 
         elif node_output in model_inputs:
             logging.debug('bottomed out at a model input')
@@ -560,6 +560,121 @@ def delete_channels(model, layer, channels, node_indices=None, copy=None):
     return new_model
 
 
+def delete_channels_multiple(model, delete_info, copy=None):
+    """Delete channels from the specified layer.
+
+    This method is designed to facilitate research into pruning networks to
+    improve their prediction performance and/or reduce computational load by
+    deleting channels.
+    All weights associated with the deleted channels in the specified layer
+    and downstream layers are deleted.
+    If the layer is shared and node_indices is set, channels will be deleted
+    from the corresponding layer instances only. This will break the weight
+    sharing between pruned and un-pruned instances in subsequent training.
+    Channels correspond to filters in conv layers and units in other layers.
+
+    Args:
+        model: Model object.
+        delete_info(dict)
+        copy: If True, the model will be copied before and after
+              manipulation. This keeps both the old and new models' layers
+              clean of each-others data-streams.
+
+    Returns:
+        A new Model with the specified channels and associated weights deleted.
+
+    Raises:
+        blaError: if layer is not contained by model
+        ValueError: if new_layer is not compatible with the input and output
+                    dimensions of the layers preceding and following it.
+        ValueError: if node_index does not correspond to one of layer's inbound
+                    nodes.
+    """
+    # if node_indices is None:
+    #     node_indices = [utils.find_nodes_in_model(model, layer)
+    #                     for layer in layers]
+    #
+    # new_layer_map = {}
+    # for i, layer in enumerate(layers):
+    #     # Delete the channels in layer to create new_layer
+    #     new_layer = _delete_channel_weights(layer, channels[i])
+    #     # Create the mask to determine the weights to delete in downstream layers
+    #     new_delete_mask = _make_delete_mask(layer, channels[i])
+    #
+    #     for node_index in node_indices[i]:
+    #         inbound_node = layer.inbound_nodes[node_index]
+    #         new_layer_map[inbound_node] = (new_layer, new_delete_mask)
+
+    # inputs: layers, each layer has an associated node_indices and channels
+    # option 1: dict{layer:(channels, node_indices)}
+    # option 2: layers = list[Layer], node_indices = list[list[int]]
+    #           channels = list[list[int]]
+    # option 3: list of tuples: list[tuple[layer, list[int], list[int]]]
+    # option 4: dict{layer: dict{'channels': channels, 'node_indices': node_indices}}
+    # option 5: pandas dataframe
+    # option 5: new class
+    modify_info = {}
+    nodes = []
+    for layer in delete_info.keys():
+        if len(delete_info[layer]) <= 1 or delete_info[layer][1] is None:
+            node_indices = utils.find_nodes_in_model(model, layer)
+        else:
+            node_indices = delete_info[layer][1]
+            # if set(node_indices) != set(
+            #         utils.find_nodes_in_model(model, layer)) and not copy:
+            #     ValueError('Can only select a subset of the indices in the'
+            #                ' model if creating a clean copy, use copy=True.')
+        nodes.extend([layer.inbound_nodes[i] for i in node_indices])
+        modify_info[layer] = node_indices
+    # get all nodes,
+    # in modifier function, if node is a key of dict, get replacement layer
+    # else, when a new node is reached, apply_delete_mask,
+    # then delete_channel_weights (need to identify correct channels)
+    # add resulting layer to dict keyed on old layer
+
+    # layer name conflict if replacing some but not all instances of one layer
+    # check if all nodes in model are being modified, if not, copy must be True
+
+    # Initialise the delete masks for the model input as all True.
+    input_delete_masks = [np.ones(n.outbound_layer.input_shape[1:],
+                                  dtype=bool) for n in model.inbound_nodes]
+
+    new_layer_map = {}
+
+    # Define the function to be applied to the inputs to the layer at each node
+    # Determine which new layer to insert based on node
+    # Create a dictionary node->new_layer
+    def _delete_inbound_weights(node, inputs, input_masks):
+        this_layer = node.outbound_layer
+        channels = delete_info[this_layer][0]
+        old_layer = node.outbound_layer
+        if old_layer in new_layer_map.keys():
+            new_layer = new_layer_map[old_layer]
+        else:
+            temp_layer, new_mask = _apply_delete_mask(node, input_masks)
+            # This call is needed to initialise input_shape and output_shape
+            temp_layer(utils.single_element(inputs))
+            new_layer = _delete_channel_weights(temp_layer, channels)
+            new_layer_map[old_layer] = new_layer
+        new_delete_mask = _make_delete_mask(this_layer, channels)
+        # Call the new layer on the rebuild submodel's inputs
+        # new_layer, new_delete_mask = new_layer_map[node]
+        # new_layer, output_mask = _apply_delete_mask(node, input_masks)
+        new_output = new_layer(utils.single_element(inputs))
+        # Replace the original layer's output with the modified layer's output
+        deleted_layer_output = utils.single_element(node.output_tensors)
+        replace_inputs = {deleted_layer_output: (new_output, new_delete_mask)}
+        return replace_inputs
+
+    # Apply the modifications to the specified layer instances in the model
+    new_model = modify_model_multiple(model,
+                                      modify_info,
+                                      _delete_inbound_weights,
+                                      copy,
+                                      input_delete_masks)
+    return new_model
+
+
 def modify_model(model,
                  layer,
                  modifier_function,
@@ -632,7 +747,8 @@ def modify_model(model,
 
     # Rebuild the rest of the model from the modified nodes to the outputs.
     output_nodes = [model.output_layers[i].inbound_nodes[node_index]
-                    for i, node_index in enumerate(model.output_layers_node_indices)]
+                    for i, node_index in
+                    enumerate(model.output_layers_node_indices)]
     new_outputs, _, _ = rebuild_submodel(model.inputs,
                                          output_nodes,
                                          replace_tensors,
@@ -646,6 +762,117 @@ def modify_model(model,
 
 
 def modify_model_multiple(model,
+                          modify_info,
+                          modifier_function,
+                          copy=None,
+                          input_delete_masks=None):
+    """Helper function to modify a model around instances of a specified layer.
+
+    This method applies a modifier function to each node specified by the
+    combination of layer and node_indices.
+    The modifier function performs some operations and returns a mapping of
+    original tensors to the resulting replacement tensors.
+    See uses of this method as examples.
+
+    Arguments:
+        model: Model object to be modified.
+        layer: Layer to be modified.
+        modifier_function: Function to be applied to each specified node.
+        node_indices: Indices of the nodes to be modified.
+        copy: If True, the model will be copied before and after
+              manipulation. This keeps both the old and new models' layers
+              clean of each-others data-streams.
+        input_delete_masks: Boolean masks to specify input channels (used by
+                            delete_channels).
+
+    Returns:
+        A modified model object
+
+    """
+    # Accept a list of layers or {layer:node_indices}?
+    # Check inputs
+    if copy:
+        model = utils.clean_copy(model)
+        # TODO: This won't work with layers shared between models/messy layers
+        modify_info = {model.get_layer(layer.get_config()['name']):
+                       node_indices for layer, node_indices
+                       in modify_info.items()}
+
+    nodes = []
+    for layer in modify_info.keys():
+        all_layer_indices = utils.find_nodes_in_model(model, layer)
+        if layer not in model.layers:
+            raise ValueError('layer is not a valid Layer in model.')
+        if modify_info[layer] is None:
+            node_indices = all_layer_indices
+        else:
+            node_indices = modify_info[layer]
+
+        node_indices_not_in_model = [i for i in node_indices
+                                     if i not in all_layer_indices]
+        if not any(node_indices_not_in_model):
+            ValueError('Node #{0} is not in layer {1}'.format(
+                node_indices_not_in_model, layer))
+        if set(node_indices) != set(
+                utils.find_nodes_in_model(model, layer)) and not copy:
+            ValueError('Can only select a subset of the indices in the'
+                       ' model if creating a clean copy, use copy=True.')
+
+        for node_index in node_indices:
+            nodes.append(layer.inbound_nodes[node_index])
+
+    # nodes = [layer.inbound_nodes[node_index]
+    #          for layer, node_indices in modify_info.items()
+    #          for node_index in node_indices]
+
+    # nodes = [layers[i].inbound_nodes[node_index] for i, node_indices in
+    #          enumerate(node_indices_list) for node_index in node_indices]
+    # Order the nodes by depth from input to output to ensure that the model is
+    # rebuilt in the correct order.
+    sorted_nodes = sorted(nodes,
+                          key=lambda x: utils.get_node_depth(model, x),
+                          reverse=True)
+
+    replace_tensors = {}
+    finished_nodes = {}
+    # For each node associated with the layer a.k.a. each layer instance
+    # for node_index in sorted_indices:
+    for node in sorted_nodes:
+        # Rebuild the model up to layer instance
+        # inbound_node = layer.inbound_nodes[node_index]
+        sub_output_nodes = [node.inbound_layers[i].inbound_nodes[node_index]
+                            for i, node_index in enumerate(node.node_indices)]
+
+        logging.debug('rebuilding model up to the layer before the insertion: '
+                      '{0}'.format(layer))
+        (submodel_outputs, submodel_output_masks, submodel_finished_outputs
+         ) = rebuild_submodel(model.inputs,
+                              sub_output_nodes,
+                              replace_tensors,
+                              finished_nodes,
+                              input_delete_masks)
+        finished_nodes.update(submodel_finished_outputs)
+
+        # Apply the modifier function.
+        replace_tensors.update(modifier_function(node, submodel_outputs, submodel_output_masks))
+
+    # Rebuild the rest of the model from the modified nodes to the outputs.
+    output_nodes = [model.output_layers[i].inbound_nodes[node_index]
+                    for i, node_index in
+                    enumerate(model.output_layers_node_indices)]
+    new_outputs, _, _ = rebuild_submodel(model.inputs,
+                                         output_nodes,
+                                         replace_tensors,
+                                         finished_nodes,
+                                         input_delete_masks)
+    new_model = Model(model.inputs, new_outputs)
+    if copy:
+        return utils.clean_copy(new_model)
+    else:
+        return new_model
+
+
+def modify_model_multiple2(model,
                           layers,
                           modifier_function,
                           node_indices_list=None,
