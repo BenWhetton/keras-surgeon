@@ -798,6 +798,7 @@ def modify_model_multiple(model,
                        node_indices for layer, node_indices
                        in modify_info.items()}
 
+    # Create a list of the affected nodes.
     nodes = []
     for layer in modify_info.keys():
         all_layer_indices = utils.find_nodes_in_model(model, layer)
@@ -854,7 +855,8 @@ def modify_model_multiple(model,
         finished_nodes.update(submodel_finished_outputs)
 
         # Apply the modifier function.
-        replace_tensors.update(modifier_function(node, submodel_outputs, submodel_output_masks))
+        replace_tensors.update(modifier_function(node, submodel_outputs,
+                                                 submodel_output_masks))
 
     # Rebuild the rest of the model from the modified nodes to the outputs.
     output_nodes = [model.output_layers[i].inbound_nodes[node_index]
@@ -862,99 +864,6 @@ def modify_model_multiple(model,
                     enumerate(model.output_layers_node_indices)]
     new_outputs, _, _ = rebuild_submodel(model.inputs,
                                          output_nodes,
-                                         replace_tensors,
-                                         finished_nodes,
-                                         input_delete_masks)
-    new_model = Model(model.inputs, new_outputs)
-    if copy:
-        return utils.clean_copy(new_model)
-    else:
-        return new_model
-
-
-def modify_model_multiple2(model,
-                          layers,
-                          modifier_function,
-                          node_indices_list=None,
-                          copy=None,
-                          input_delete_masks=None):
-    """Helper function to modify a model around instances of a specified layer.
-
-    This method applies a modifier function to each node specified by the
-    combination of layer and node_indices.
-    The modifier function performs some operations and returns a mapping of
-    original tensors to the resulting replacement tensors.
-    See uses of this method as examples.
-
-    Arguments:
-        model: Model object to be modified.
-        layer: Layer to be modified.
-        modifier_function: Function to be applied to each specified node.
-        node_indices: Indices of the nodes to be modified.
-        copy: If True, the model will be copied before and after
-              manipulation. This keeps both the old and new models' layers
-              clean of each-others data-streams.
-        input_delete_masks: Boolean masks to specify input channels (used by
-                            delete_channels).
-
-    Returns:
-        A modified model object
-
-    """
-    # Check inputs
-    for layer in layers:
-        if layer not in model.layers:
-            raise ValueError('layer is not a valid Layer in model.')
-    # If no nodes are specified, apply the modification to all of the layer's
-    # inbound nodes which are contained in the model.
-    for node_indices in node_indices_list:
-        if not node_indices:
-            node_indices = utils.bool_to_index(
-                utils.check_nodes_in_model(model, layer.inbound_nodes))
-    if copy:
-        model = utils.clean_copy(model)
-        layer = model.get_layer(layer.get_config()['name'])
-
-    # The layers instances need to be added from deepest to shallowest
-    # Layer instances need to be sorted: (layer, node_index)
-    get_instance_depth = utils.get_node_depth
-    # sorted_layer_instances = sorted(layer_instances, key=)
-
-    # Order the nodes by depth from input to output to ensure that the model is
-    # rebuilt in the correct order.
-    node_depths = [utils.get_node_depth(model, layer.inbound_nodes[node_index])
-                   for node_index in node_indices]
-    sorted_indices = reversed(utils.sort_x_by_y(node_indices, node_depths))
-
-    replace_tensors = {}
-    finished_nodes = {}
-    # For each node associated with the layer a.k.a. each layer instance
-    for node_index in sorted_indices:
-        # Rebuild the model up to layer instance
-        inbound_node = layer.inbound_nodes[node_index]
-        submodel_output_layers = inbound_node.inbound_layers
-        submodel_output_layer_node_indices = inbound_node.node_indices
-
-        logging.debug('rebuilding model up to the layer before the insertion: '
-                      '{0}'.format(layer))
-        (submodel_outputs, _, submodel_finished_outputs
-         ) = rebuild_submodel(model.inputs,
-                              submodel_output_layers,
-                              submodel_output_layer_node_indices,
-                              replace_tensors,
-                              finished_nodes,
-                              input_delete_masks)
-        finished_nodes.update(submodel_finished_outputs)
-
-        # Apply the modifier function.
-        replace_tensors.update(modifier_function(layer,
-                                                 node_index,
-                                                 submodel_outputs))
-
-    # Rebuild the rest of the model from the modified nodes to the outputs.
-    new_outputs, _, _ = rebuild_submodel(model.inputs,
-                                         model.output_layers,
-                                         model.output_layers_node_indices,
                                          replace_tensors,
                                          finished_nodes,
                                          input_delete_masks)

@@ -75,6 +75,22 @@ def get_model_nodes(model):
     return [node for v in model.nodes_by_depth.values() for node in v]
 
 
+def get_shallower_nodes(node):
+    possible_nodes = node.outbound_layer.outbound_nodes
+    next_nodes = []
+    for n in possible_nodes:
+        for i, node_index in enumerate(n.node_indices):
+            if node == n.inbound_layers[i].inbound_nodes[node_index]:
+                next_nodes.append(n)
+    return next_nodes
+
+
+def get_node_index(node):
+    for i, n in enumerate(node.outbound_layer.inbound_nodes):
+        if node == n:
+            return i
+
+
 def find_activation_layer(layer, node_index):
     """
 
@@ -83,33 +99,34 @@ def find_activation_layer(layer, node_index):
         node_index:
     """
     output_shape = layer.get_output_shape_at(node_index)
-    temp_layer = layer
-    node = temp_layer.inbound_nodes[node_index]
+    maybe_layer = layer
+    node = maybe_layer.inbound_nodes[node_index]
     # Loop will be broken by an error if an output layer is encountered
     while True:
-        if temp_layer.weights and (
-                not temp_layer.__class__.__name__.startswith('Global')):
-            AttributeError('There is no nonlinear activation layer between {0}'
-                           ' and {1}'.format(layer.name, temp_layer.name))
-        activation = getattr(temp_layer, 'activation', linear)
+        # If maybe_layer has a nonlinear activation function return it and its index
+        activation = getattr(maybe_layer, 'activation', linear)
         if activation.__name__ != 'linear':
-            if temp_layer.get_output_shape_at(node_index) != output_shape:
+            if maybe_layer.get_output_shape_at(node_index) != output_shape:
                 ValueError('The activation layer ({0}), does not have the same'
-                           ' output shape as {1]'.format(temp_layer.name,
+                           ' output shape as {1]'.format(maybe_layer.name,
                                                          layer.name))
-            return temp_layer, node_index
-        # move to the next layer in the datastream
-        node_indices = [i if node.outbound_layer.inbound_nodes.index(node) in
-                        node.outbound_layer.outbound_nodes[i].node_indices
-                        else None for i in
-                        range(len(node.outbound_layer.outbound_nodes))]
-        if len(node_indices) > 1:
-            ValueError('The model must not branch between the chose layer and '
-                       'the activation layer.')
-        else:
-            node_index = node_indices[0]
-            node = node.outbound_layer.outbound_nodes[node_index]
-        temp_layer = node.outbound_layer
+            return maybe_layer, node_index
+
+        # If not, move to the next layer in the datastream
+        next_nodes = get_shallower_nodes(node)
+        # test if node is a list of nodes with more than one item
+        if len(next_nodes) > 1:
+            ValueError('The model must not branch between the chosen layer'
+                       ' and the activation layer.')
+        node = next_nodes[0]
+        node_index = get_node_index(node)
+        maybe_layer = node.outbound_layer
+
+        # Check if maybe_layer has weights, no activation layer has been found
+        if maybe_layer.weights and (
+                not maybe_layer.__class__.__name__.startswith('Global')):
+            AttributeError('There is no nonlinear activation layer between {0}'
+                           ' and {1}'.format(layer.name, maybe_layer.name))
 
 
 def sort_x_by_y(x, y):
@@ -126,7 +143,8 @@ def single_element(x):
 
 
 def bool_to_index(x):
-    return [i for i in range(len(x)) if x]
+    # return [i for i in range(len(x)) if x]
+    return [i for i, v in enumerate(x) if v]
 
 
 def all_equal(iterator):

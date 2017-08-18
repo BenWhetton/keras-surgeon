@@ -28,9 +28,10 @@ def test_rebuild_sequential(model_1):
 
 
 def test_rebuild_submodel(model_2):
-    outputs, _, _ = prune.rebuild_submodel(model_2.inputs,
-                                           model_2.output_layers,
-                                           model_2.output_layers_node_indices)
+    output_nodes = [model_2.output_layers[i].inbound_nodes[node_index]
+                    for i, node_index in
+                    enumerate(model_2.output_layers_node_indices)]
+    outputs, _, _ = prune.rebuild_submodel(model_2.inputs, output_nodes)
     new_model = models.Model(model_2.inputs, outputs)
     assert compare_models(model_2, new_model)
 

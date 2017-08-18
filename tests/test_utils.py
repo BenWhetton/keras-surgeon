@@ -1,7 +1,34 @@
-from kerasprune.utils import find_activation_layer
-from keras.layers import Conv2D, Activation, MaxPool2D, Flatten, Dense
-from keras.models import Sequential
+from kerasprune.utils import find_activation_layer, get_shallower_nodes
+from keras.layers import Conv2D, Activation, MaxPool2D, Flatten, Dense, Input
+from keras.models import Sequential, Model
 import pytest
+
+
+def test_get_shallower_nodes():
+    input_1 = Input((10,))
+    input_2 = Input((10,))
+    dense_1 = Dense(3)
+    dense_2 = Dense(4)
+    dense_3 = Dense(5)
+
+    x = dense_1(input_1)
+    node_1_1 = dense_1.inbound_nodes[0]
+    y = dense_1(input_2)
+    node_2_1 = dense_1.inbound_nodes[1]
+    assert node_1_1 != node_2_1
+
+    output_1 = dense_2(x)
+    node_1_2 = dense_2.inbound_nodes[0]
+    output_2 = dense_3(y)
+    node_2_2 = dense_3.inbound_nodes[0]
+
+    assert get_shallower_nodes(node_1_1) == [node_1_2]
+    assert get_shallower_nodes(node_2_1) == [node_2_2]
+
+    output_3 = dense_2(y)
+    node_2_2_2 = dense_2.inbound_nodes[1]
+
+    assert get_shallower_nodes(node_2_1) == [node_2_2, node_2_2_2]
 
 
 def test_find_activation_layer():
