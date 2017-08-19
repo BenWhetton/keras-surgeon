@@ -85,6 +85,11 @@ def get_shallower_nodes(node):
     return next_nodes
 
 
+def get_inbound_nodes(node):
+    return [node.inbound_layers[i].inbound_nodes[node_index]
+            for i, node_index in enumerate(node.node_indices)]
+
+
 def get_node_index(node):
     for i, n in enumerate(node.outbound_layer.inbound_nodes):
         if node == n:

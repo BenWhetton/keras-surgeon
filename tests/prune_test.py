@@ -31,7 +31,8 @@ def test_rebuild_submodel(model_2):
     output_nodes = [model_2.output_layers[i].inbound_nodes[node_index]
                     for i, node_index in
                     enumerate(model_2.output_layers_node_indices)]
-    outputs, _, _ = prune.rebuild_submodel(model_2.inputs, output_nodes)
+    surgeon = prune.Surgeon(model_2)
+    outputs, _ = surgeon.rebuild_submodel(model_2.inputs, output_nodes)
     new_model = models.Model(model_2.inputs, outputs)
     assert compare_models(model_2, new_model)
 
@@ -258,7 +259,7 @@ def layer_test_helper_2d(layer, channel_index, data_format):
     assert weights_equal(correct_w, new_w)
 
 
-def layer_test_helper_flatten_2d(layer, channel_index, data_format):
+def layer_test_helper_flatten_2d_bak(layer, channel_index, data_format):
     # This should test that the output is the correct shape so it should pass
     # into a Dense layer rather than a Conv layer.
     # The weighted layer is the previous layer,
@@ -277,6 +278,49 @@ def layer_test_helper_flatten_2d(layer, channel_index, data_format):
     layer = model.layers[layer_index]
     del_layer = model.layers[del_layer_index]
     new_model = prune.delete_channels(model, del_layer, channel_index)
+    new_w = new_model.layers[next_layer_index].get_weights()
+
+    # Calculate next layer's correct weights
+    flat_sz = np.prod(layer.get_output_shape_at(0)[1:])
+    channel_count = getattr(del_layer, utils.get_channels_attr(del_layer))
+    channel_index = [i % channel_count for i in channel_index]
+    if data_format == 'channels_first':
+        delete_indices = [x * flat_sz // channel_count + i for x in
+                          channel_index
+                          for i in range(0, flat_sz // channel_count, )]
+    elif data_format == 'channels_last':
+        delete_indices = [x + i for i in range(0, flat_sz, channel_count)
+                          for x in channel_index]
+    else:
+        raise ValueError
+    correct_w = model.layers[next_layer_index].get_weights()
+    correct_w[0] = np.delete(correct_w[0], delete_indices, axis=0)
+
+    assert weights_equal(correct_w, new_w)
+
+
+def layer_test_helper_flatten_2d(layer, channel_index, data_format):
+    # This should test that the output is the correct shape so it should pass
+    # into a Dense layer rather than a Conv layer.
+    # The weighted layer is the previous layer,
+    # Create model
+    main_input = layers.Input(shape=list(random.randint(10, 20, size=3)))
+    x = layers.Conv2D(3, [3, 3], data_format=data_format)(main_input)
+    x = layer(x)
+    x = layers.Flatten()(x)
+    main_output = layers.Dense(5)(x)
+    model = models.Model(inputs=main_input, outputs=main_output)
+
+    # Delete channels
+    del_layer_index = 1
+    layer_index = 2
+    next_layer_index = 4
+    layer = model.layers[layer_index]
+    del_layer = model.layers[del_layer_index]
+    surgeon = prune.Surgeon(model)
+    surgeon.add_job('delete_channels', del_layer, channel_index)
+    new_model = surgeon.operate()
+    # new_model = prune.delete_channels(model, del_layer, channel_index)
     new_w = new_model.layers[next_layer_index].get_weights()
 
     # Calculate next layer's correct weights
