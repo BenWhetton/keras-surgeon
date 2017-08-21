@@ -6,6 +6,7 @@ from keras import models
 from keras import layers
 from numpy import random
 
+import kerassurgeon.operations
 from kerassurgeon import utils
 from kerassurgeon import prune
 
@@ -23,7 +24,7 @@ def channel_index(request):
 
 
 def test_rebuild_sequential(model_1):
-    model_2 = prune.rebuild_sequential(model_1.layers)
+    model_2 = kerassurgeon.operations.rebuild_sequential(model_1.layers)
     assert compare_models_seq(model_1, model_2)
 
 
@@ -47,7 +48,7 @@ def test_delete_channels_rec_1():
     model.compile(optimizer='rmsprop',
                   loss='categorical_crossentropy',
                   metrics=['accuracy'])
-    prune.delete_channels(model, model.layers[2], [0])
+    kerassurgeon.operations.delete_channels(model, model.layers[2], [0])
 
 
 def model_3(data_format):
@@ -90,10 +91,10 @@ def model_3(data_format):
 def test_delete_channels_conv2d_conv2d(channel_index, data_format):
     model = model_3(data_format)
     layer_index = 1
-    new_model = prune.delete_channels(model,
-                                      model.layers[layer_index],
-                                      channel_index,
-                                      copy=True)
+    new_model = kerassurgeon.operations.delete_channels(model,
+                                                        model.layers[layer_index],
+                                                        channel_index,
+                                                        copy=True)
     channel_count = model.layers[layer_index].filters
     channel_index = [i % channel_count for i in channel_index]
     w = model.layers[layer_index].get_weights()
@@ -107,9 +108,9 @@ def test_delete_channels_conv2d_conv2d_next_layer(channel_index, data_format):
     model = model_3(data_format)
     layer_index = 1
     next_layer_index = 2
-    new_model = prune.delete_channels(model,
-                                      model.layers[layer_index],
-                                      channel_index)
+    new_model = kerassurgeon.operations.delete_channels(model,
+                                                        model.layers[layer_index],
+                                                        channel_index)
     channel_count = model.layers[layer_index].filters
     channel_index = [i % channel_count for i in channel_index]
     w = model.layers[next_layer_index].get_weights()
@@ -131,7 +132,7 @@ def test_delete_channels_flatten(channel_index, data_format):
     layer_index = 1
     next_layer_index = 3
     layer = model.layers[layer_index]
-    new_model = prune.delete_channels(model, layer, channel_index)
+    new_model = kerassurgeon.operations.delete_channels(model, layer, channel_index)
     new_w = new_model.layers[next_layer_index].get_weights()
 
     # Calculate next layer's correct weights
@@ -220,7 +221,7 @@ def recursive_test_helper(layer, channel_index):
     del_layer_index = 1
     next_layer_index = 2
     del_layer = model.layers[del_layer_index]
-    new_model = prune.delete_channels(model, del_layer, channel_index)
+    new_model = kerassurgeon.operations.delete_channels(model, del_layer, channel_index)
     new_w = new_model.layers[next_layer_index].get_weights()
 
     # Calculate next layer's correct weights
@@ -247,7 +248,7 @@ def layer_test_helper_2d(layer, channel_index, data_format):
     del_layer_index = 1
     next_layer_index = 3
     del_layer = model.layers[del_layer_index]
-    new_model = prune.delete_channels(model, del_layer, channel_index)
+    new_model = kerassurgeon.operations.delete_channels(model, del_layer, channel_index)
     new_w = new_model.layers[next_layer_index].get_weights()
 
     # Calculate next layer's correct weights
@@ -277,7 +278,7 @@ def layer_test_helper_flatten_2d_bak(layer, channel_index, data_format):
     next_layer_index = 4
     layer = model.layers[layer_index]
     del_layer = model.layers[del_layer_index]
-    new_model = prune.delete_channels(model, del_layer, channel_index)
+    new_model = kerassurgeon.operations.delete_channels(model, del_layer, channel_index)
     new_w = new_model.layers[next_layer_index].get_weights()
 
     # Calculate next layer's correct weights
@@ -377,7 +378,7 @@ def test_delete_layer():
     output_2 = dense_4(x)
     model_2_exp = utils.clean_copy(models.Model(input_1, output_2))
     # Delete layer dense_2
-    model_2 = prune.delete_layer(model_1, model_1.get_layer(dense_2.name))
+    model_2 = kerassurgeon.operations.delete_layer(model_1, model_1.get_layer(dense_2.name))
     # Compare the modified model with the expected modified model
     assert compare_models(model_2, model_2_exp)
 
@@ -405,9 +406,9 @@ def test_delete_layer_reuse():
     # model_2_exp = prune.clean_copy(Model(input_1, output_2))
     model_2_exp = models.Model(input_1, output_2)
     # Delete layer dense_2
-    model_2 = prune.delete_layer(model_1,
-                                 model_1.get_layer(dense_2.name),
-                                 copy=False)
+    model_2 = kerassurgeon.operations.delete_layer(model_1,
+                                                   model_1.get_layer(dense_2.name),
+                                                   copy=False)
     # Compare the modified model with the expected modified model
     assert compare_models(model_2, model_2_exp)
 
@@ -430,9 +431,9 @@ def test_replace_layer():
     output_2 = dense_4(x)
     model_2_exp = utils.clean_copy(models.Model(input_1, output_2))
     # Replace dense_2 with dense_3 in model_1
-    model_2 = prune.replace_layer(model_1,
-                                  model_1.get_layer(dense_2.name),
-                                  dense_3)
+    model_2 = kerassurgeon.operations.replace_layer(model_1,
+                                                    model_1.get_layer(dense_2.name),
+                                                    dense_3)
     # Compare the modified model with the expected modified model
     assert compare_models(model_2, model_2_exp)
 
@@ -456,9 +457,9 @@ def test_insert_layer():
     output_2 = dense_4(x)
     model_2_exp = utils.clean_copy(models.Model(input_1, output_2))
     # Insert dense_3 before dense_4 in model_1
-    model_2 = prune.insert_layer(model_1,
-                                 model_1.get_layer(dense_4.name),
-                                 dense_3)
+    model_2 = kerassurgeon.operations.insert_layer(model_1,
+                                                   model_1.get_layer(dense_4.name),
+                                                   dense_3)
     # Compare the modified model with the expected modified model
     assert compare_models(model_2, model_2_exp)
 
@@ -484,9 +485,9 @@ def test_delete_layer_same_layer_outputs():
     output_2 = dense_4(y)
     model_2_exp = utils.clean_copy(models.Model(input_1, [output_1, output_2]))
     # Delete layer dense_3
-    model_2 = prune.delete_layer(model_1,
-                                 model_1.get_layer(dense_3.name),
-                                 copy=False)
+    model_2 = kerassurgeon.operations.delete_layer(model_1,
+                                                   model_1.get_layer(dense_3.name),
+                                                   copy=False)
     # Compare the modified model with the expected modified model
     assert compare_models(model_2, model_2_exp)
 

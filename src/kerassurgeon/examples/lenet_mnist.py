@@ -5,7 +5,7 @@ from keras import callbacks
 from tensorflow.examples.tutorials.mnist import input_data
 
 from kerassurgeon import identify
-from kerassurgeon.prune import delete_channels
+from kerassurgeon.operations import delete_channels
 
 
 def main():

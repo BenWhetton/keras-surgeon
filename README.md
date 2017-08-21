@@ -1,7 +1,7 @@
 #Keras-surgeon
 ##Introduction
 Keras-surgeon provides simple methods for modifying trained 
-keras models. The following functionality is currently implemented:
+[Keras][] models. The following functionality is currently implemented:
 * Delete neurons/channels from layers
 * Delete layers
 * insert layers
