@@ -1,5 +1,3 @@
-"""Prune connections or whole neurons from Keras model layers."""
-# Imports
 import logging
 
 import numpy as np
@@ -124,7 +122,8 @@ class Surgeon:
             mod_func = self._replace_layer
 
         else:
-            raise ValueError(job + ' is not a recognised job.')
+            raise ValueError(job + ' is not a recognised job. Valid jobs '
+                             'are:\n-', '\n- '.join(self.valid_jobs))
 
         # Get nodes to be operated on for this job
         job_nodes = []
