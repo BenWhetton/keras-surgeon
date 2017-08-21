@@ -1,4 +1,4 @@
-from kerassurgeon.prune import Surgeon
+from kerassurgeon.surgeon import Surgeon
 
 
 def rebuild_sequential(layers):

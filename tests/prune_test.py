@@ -8,7 +8,7 @@ from numpy import random
 
 import kerassurgeon.operations
 from kerassurgeon import utils
-from kerassurgeon import prune
+from kerassurgeon import Surgeon
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
@@ -32,7 +32,7 @@ def test_rebuild_submodel(model_2):
     output_nodes = [model_2.output_layers[i].inbound_nodes[node_index]
                     for i, node_index in
                     enumerate(model_2.output_layers_node_indices)]
-    surgeon = prune.Surgeon(model_2)
+    surgeon = Surgeon(model_2)
     outputs, _ = surgeon._rebuild_graph(model_2.inputs, output_nodes)
     new_model = models.Model(model_2.inputs, outputs)
     assert compare_models(model_2, new_model)
@@ -318,7 +318,7 @@ def layer_test_helper_flatten_2d(layer, channel_index, data_format):
     next_layer_index = 4
     layer = model.layers[layer_index]
     del_layer = model.layers[del_layer_index]
-    surgeon = prune.Surgeon(model)
+    surgeon = Surgeon(model)
     surgeon.add_job('delete_channels', del_layer, channels=channel_index)
     new_model = surgeon.operate()
     # new_model = prune.delete_channels(model, del_layer, channel_index)
