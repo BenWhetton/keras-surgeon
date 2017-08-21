@@ -13,7 +13,6 @@ def clean_copy(model):
 
 
 def get_channels_attr(layer):
-    # TODO: try getattr(layer, 'units', getattr(layer, 'filters')) if useful
     layer_config = layer.get_config()
     if 'units' in layer_config.keys():
         channels_attr = 'units'

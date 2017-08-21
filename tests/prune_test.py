@@ -17,7 +17,7 @@ def data_format(request):
     return request.param
 
 
-@pytest.fixture(params=[[0], [-1], [1, 2], pytest.mark.xfail([1, 1])], ids=str)
+@pytest.fixture(params=[[0], [-1], [1, 2]], ids=str)
 def channel_index(request):
     return request.param
 
@@ -32,7 +32,7 @@ def test_rebuild_submodel(model_2):
                     for i, node_index in
                     enumerate(model_2.output_layers_node_indices)]
     surgeon = prune.Surgeon(model_2)
-    outputs, _ = surgeon.rebuild_submodel(model_2.inputs, output_nodes)
+    outputs, _ = surgeon._rebuild_graph(model_2.inputs, output_nodes)
     new_model = models.Model(model_2.inputs, outputs)
     assert compare_models(model_2, new_model)
 
@@ -318,7 +318,7 @@ def layer_test_helper_flatten_2d(layer, channel_index, data_format):
     layer = model.layers[layer_index]
     del_layer = model.layers[del_layer_index]
     surgeon = prune.Surgeon(model)
-    surgeon.add_job('delete_channels', del_layer, channel_index)
+    surgeon.add_job('delete_channels', del_layer, channels=channel_index)
     new_model = surgeon.operate()
     # new_model = prune.delete_channels(model, del_layer, channel_index)
     new_w = new_model.layers[next_layer_index].get_weights()
