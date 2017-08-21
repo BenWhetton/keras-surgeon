@@ -4,7 +4,7 @@ from setuptools import setup
 from setuptools import find_packages
 
 setup(
-    name='kerasprune',
+    name='kerassurgeon',
     version="0.0.0a1",
     url='',
     license='MIT',

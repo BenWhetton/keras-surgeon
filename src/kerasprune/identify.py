@@ -4,7 +4,7 @@ from keras import backend as k
 from keras.preprocessing.image import Iterator
 from keras.models import Model
 
-from kerasprune import utils
+from kerassurgeon import utils
 
 
 def get_apoz(model, layer, x_val, node_indices=None):

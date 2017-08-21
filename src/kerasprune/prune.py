@@ -7,7 +7,7 @@ from keras.layers import BatchNormalization
 from keras.models import Model
 from keras.engine.topology import Node
 
-from kerasprune import utils
+from kerassurgeon import utils
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)

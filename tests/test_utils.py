@@ -1,4 +1,4 @@
-from kerasprune.utils import find_activation_layer, get_shallower_nodes
+from kerassurgeon.utils import find_activation_layer, get_shallower_nodes
 from keras.layers import Conv2D, Activation, MaxPool2D, Flatten, Dense, Input
 from keras.models import Sequential, Model
 import pytest

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 #
-# kerasprune documentation build configuration file, created by
+# kerassurgeon documentation build configuration file, created by
 # sphinx-quickstart on Sat May 20 18:22:06 2017.
 #
 # This file is execfile()d with the current directory set to its
@@ -19,7 +19,7 @@
 #
 # import os
 # import sys
-# sys.path.insert(0, '/home/benj/Projects/python/keras-prune/src/kerasprune')
+# sys.path.insert(0, '/home/benj/Projects/python/keras-prune/src/kerassurgeon')
 
 
 # -- General configuration ------------------------------------------------
@@ -53,7 +53,7 @@ source_parsers = {'.md': CommonMarkParser}
 master_doc = 'index'
 
 # General information about the project.
-project = 'kerasprune'
+project = 'kerassurgeon'
 copyright = '2017, Author'
 author = 'Author'
 
@@ -64,9 +64,9 @@ author = 'Author'
 # The short X.Y version.
 import pkg_resources, sys
 try:
-    release = pkg_resources.get_distribution('kerasprune').version
+    release = pkg_resources.get_distribution('kerassurgeon').version
 except pkg_resources.DistributionNotFound:
-    print('To build the documentation, The distribution information of kerasprune')
+    print('To build the documentation, The distribution information of kerassurgeon')
     print('Has to be available.  Either install the package into your')
     print('development environment or run "setup.py develop" to setup the')
     print('metadata.  A virtualenv is recommended!')
@@ -145,7 +145,7 @@ latex_elements = {
 # (source start file, target name, title,
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
-    (master_doc, 'kerasprune.tex', 'kerasprune Documentation',
+    (master_doc, 'kerassurgeon.tex', 'kerassurgeon Documentation',
      'Author', 'manual'),
 ]
 
@@ -155,7 +155,7 @@ latex_documents = [
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
 man_pages = [
-    (master_doc, 'kerasprune', 'kerasprune Documentation',
+    (master_doc, 'kerassurgeon', 'kerassurgeon Documentation',
      [author], 1)
 ]
 
@@ -166,8 +166,8 @@ man_pages = [
 # (source start file, target name, title, author,
 #  dir menu entry, description, category)
 texinfo_documents = [
-    (master_doc, 'kerasprune', 'kerasprune Documentation',
-     author, 'kerasprune', 'One line description of project.',
+    (master_doc, 'kerassurgeon', 'kerassurgeon Documentation',
+     author, 'kerassurgeon', 'One line description of project.',
      'Miscellaneous'),
 ]
 

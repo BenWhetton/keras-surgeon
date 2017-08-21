@@ -6,8 +6,8 @@ from keras import models
 from keras import layers
 from numpy import random
 
-from kerasprune import utils
-from kerasprune import prune
+from kerassurgeon import utils
+from kerassurgeon import prune
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
