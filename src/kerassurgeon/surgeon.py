@@ -469,10 +469,10 @@ class Surgeon:
                              'ActivityRegularization',
                              'Masking',
                              'LeakyReLU',
-                             'PReLU',
                              'ELU',
                              'ThresholdedReLU',
                              'GaussianNoise',
+                             'GaussianDropout',
                              'AlphaDropout'):
             # Pass-through layers
             outbound_mask = inbound_masks
@@ -504,7 +504,7 @@ class Surgeon:
             outbound_mask = None
             new_layer = layer
 
-        elif layer_class in ('Multiply', 'Average', 'Maximum', 'Dot',):
+        elif layer_class in ('Add', 'Multiply', 'Average', 'Maximum'):
             # The inputs must be the same size
             if not utils.all_equal(inbound_masks):
                 ValueError(
@@ -560,7 +560,8 @@ class Surgeon:
             # - LocallyConnected2D
             # - TimeDistributed
             # - Bidirectional
-            # -
+            # - Dot
+            # - PReLU
             # Warning/error needed for Reshape if channels axis is split
             raise ValueError('"{0}" layers are currently '
                              'unsupported.'.format(layer_class))

@@ -2,11 +2,17 @@ import os
 
 import pytest
 import numpy as np
-from keras import models
 from keras.models import Sequential, Model
 from keras.layers import Input, Dense, Flatten
+from keras.layers import Conv1D, MaxPool1D, Cropping1D, UpSampling1D
+from keras.layers import ZeroPadding1D, AveragePooling1D, GlobalAveragePooling1D
 from keras.layers import Conv2D, MaxPool2D, Cropping2D, UpSampling2D
 from keras.layers import ZeroPadding2D, AveragePooling2D, GlobalAveragePooling2D
+from keras.layers import Conv3D, MaxPool3D, Cropping3D, UpSampling3D
+from keras.layers import ZeroPadding3D, AveragePooling3D
+from keras.layers import Add, Multiply, Average, Maximum, Concatenate
+from keras.layers import LeakyReLU, ELU, ThresholdedReLU
+from keras.layers import GaussianNoise, GaussianDropout, AlphaDropout
 from keras.layers import SimpleRNN, GRU, LSTM, BatchNormalization
 from numpy import random
 
@@ -180,6 +186,36 @@ def test_delete_channels_flatten(channel_index, data_format):
     assert weights_equal(correct_w, new_w)
 
 
+def test_delete_channels_maxpooling1d(channel_index):
+    layer = MaxPool1D(2)
+    layer_test_helper_flatten_1d(layer, channel_index)
+
+
+def test_delete_channels_cropping1d(channel_index):
+    layer = Cropping1D(3)
+    layer_test_helper_flatten_1d(layer, channel_index)
+
+
+def test_delete_channels_upsampling1d(channel_index):
+    layer = UpSampling1D(3)
+    layer_test_helper_flatten_1d(layer, channel_index)
+
+
+def test_delete_channels_zeropadding1d(channel_index):
+    layer = ZeroPadding1D(3)
+    layer_test_helper_flatten_1d(layer, channel_index)
+
+
+def test_delete_channels_averagepooling1d(channel_index):
+    layer = AveragePooling1D(3)
+    layer_test_helper_flatten_1d(layer, channel_index)
+
+
+def test_delete_channels_globalaveragepooling1d(channel_index):
+    layer = GlobalAveragePooling1D()
+    layer_test_helper_1d_global(layer, channel_index)
+
+
 def test_delete_channels_maxpooling2d(channel_index, data_format):
     layer = MaxPool2D([2, 2], data_format=data_format)
     layer_test_helper_flatten_2d(layer, channel_index, data_format)
@@ -207,7 +243,101 @@ def test_delete_channels_averagepooling2d(channel_index, data_format):
 
 def test_delete_channels_globalaveragepooling2d(channel_index, data_format):
     layer = GlobalAveragePooling2D(data_format=data_format)
-    layer_test_helper_2d(layer, channel_index, data_format)
+    layer_test_helper_2d_global(layer, channel_index, data_format)
+
+
+def test_delete_channels_maxpooling3d(channel_index, data_format):
+    layer = MaxPool3D([2, 3, 2], data_format=data_format)
+    layer_test_helper_flatten_3d(layer, channel_index, data_format=data_format)
+
+
+def test_delete_channels_cropping3d(channel_index, data_format):
+    layer = Cropping3D([2, 3, 2], data_format=data_format)
+    layer_test_helper_flatten_3d(layer, channel_index, data_format=data_format)
+
+
+def test_delete_channels_upsampling3d(channel_index, data_format):
+    layer = UpSampling3D([2, 3, 2], data_format=data_format)
+    layer_test_helper_flatten_3d(layer, channel_index, data_format=data_format)
+
+
+def test_delete_channels_zeropadding3d(channel_index, data_format):
+    layer = ZeroPadding3D([2, 3, 2], data_format=data_format)
+    layer_test_helper_flatten_3d(layer, channel_index, data_format=data_format)
+
+
+def test_delete_channels_averagepooling3d(channel_index, data_format):
+    layer = AveragePooling3D([2, 3, 2], data_format=data_format)
+    layer_test_helper_flatten_3d(layer, channel_index, data_format=data_format)
+
+
+def test_delete_channels_merge_concatenate(channel_index, data_format):
+    # This should test that the output is the correct shape so it should pass
+    # into a Dense layer rather than a Conv layer.
+    # The weighted layer is the previous layer,
+    # Create model
+    if data_format == 'channels_first':
+        axis = 1
+    elif data_format == 'channels_last':
+        axis = -1
+    else:
+        raise ValueError
+
+    input_shape = list(random.randint(10, 20, size=3))
+    input_1 = Input(shape=input_shape)
+    input_2 = Input(shape=input_shape)
+    x = Conv2D(3, [3, 3], data_format=data_format, name='conv_1')(input_1)
+    y = Conv2D(3, [3, 3], data_format=data_format, name='conv_2')(input_2)
+    x = Concatenate(axis=axis, name='cat_1')([x, y])
+    x = Flatten()(x)
+    main_output = Dense(5, name='dense_1')(x)
+    model = Model(inputs=[input_1, input_2], outputs=main_output)
+    old_w = model.get_layer('dense_1').get_weights()
+
+    # Delete channels
+    layer = model.get_layer('cat_1')
+    del_layer = model.get_layer('conv_1')
+    surgeon = Surgeon(model, copy=True)
+    surgeon.add_job('delete_channels', del_layer, channels=channel_index)
+    new_model = surgeon.operate()
+    new_w = new_model.get_layer('dense_1').get_weights()
+
+    # Calculate next layer's correct weights
+    flat_sz = np.prod(layer.get_output_shape_at(0)[1:])
+    channel_count = getattr(del_layer, utils.get_channels_attr(del_layer))
+    channel_index = [i % channel_count for i in channel_index]
+    if data_format == 'channels_first':
+        delete_indices = [x * flat_sz // 2 // channel_count + i for x in
+                          channel_index
+                          for i in range(0, flat_sz // 2 // channel_count, )]
+    elif data_format == 'channels_last':
+        delete_indices = [x + i for i in range(0, flat_sz, channel_count*2)
+                          for x in channel_index]
+    else:
+        raise ValueError
+    correct_w = model.get_layer('dense_1').get_weights()
+    correct_w[0] = np.delete(correct_w[0], delete_indices, axis=0)
+
+    assert weights_equal(correct_w, new_w)
+
+
+def test_delete_channels_merge_others(channel_index, data_format):
+    layer_test_helper_merge_2d(Add(), channel_index, data_format)
+    layer_test_helper_merge_2d(Multiply(), channel_index, data_format)
+    layer_test_helper_merge_2d(Average(), channel_index, data_format)
+    layer_test_helper_merge_2d(Maximum(), channel_index, data_format)
+
+
+def test_delete_channels_advanced_activations(channel_index, data_format):
+    layer_test_helper_flatten_2d(LeakyReLU(), channel_index, data_format)
+    layer_test_helper_flatten_2d(ELU(), channel_index, data_format)
+    layer_test_helper_flatten_2d(ThresholdedReLU(), channel_index, data_format)
+
+
+def test_delete_channels_noise(channel_index, data_format):
+    layer_test_helper_flatten_2d(GaussianNoise(0.5), channel_index, data_format)
+    layer_test_helper_flatten_2d(GaussianDropout(0.5), channel_index, data_format)
+    layer_test_helper_flatten_2d(AlphaDropout(0.5), channel_index, data_format)
 
 
 def test_delete_channels_simplernn(channel_index):
@@ -234,8 +364,6 @@ def test_delete_channels_batchnormalization(channel_index, data_format):
     layer = BatchNormalization(axis=axis)
     layer_test_helper_flatten_2d(layer, channel_index, data_format)
 
-# TODO: Concatenate tests (test for batch axis?)
-
 
 def recursive_test_helper(layer, channel_index):
     main_input = Input(shape=[32, 10])
@@ -260,7 +388,34 @@ def recursive_test_helper(layer, channel_index):
     assert weights_equal(correct_w, new_w)
 
 
-def layer_test_helper_2d(layer, channel_index, data_format):
+def layer_test_helper_1d_global(layer, channel_index):
+    # This should test that the output is the correct shape so it should pass
+    # into a Dense layer rather than a Conv layer.
+    # The weighted layer is the previous layer,
+    # Create model
+    main_input = Input(shape=list(random.randint(10, 20, size=2)))
+    x = Conv1D(3, 3)(main_input)
+    x = layer(x)
+    main_output = Dense(5)(x)
+    model = Model(inputs=main_input, outputs=main_output)
+
+    # Delete channels
+    del_layer_index = 1
+    next_layer_index = 3
+    del_layer = model.layers[del_layer_index]
+    new_model = operations.delete_channels(model, del_layer, channel_index)
+    new_w = new_model.layers[next_layer_index].get_weights()
+
+    # Calculate next layer's correct weights
+    channel_count = getattr(del_layer, utils.get_channels_attr(del_layer))
+    channel_index = [i % channel_count for i in channel_index]
+    correct_w = model.layers[next_layer_index].get_weights()
+    correct_w[0] = np.delete(correct_w[0], channel_index, axis=0)
+
+    assert weights_equal(correct_w, new_w)
+
+
+def layer_test_helper_2d_global(layer, channel_index, data_format):
     # This should test that the output is the correct shape so it should pass
     # into a Dense layer rather than a Conv layer.
     # The weighted layer is the previous layer,
@@ -287,7 +442,41 @@ def layer_test_helper_2d(layer, channel_index, data_format):
     assert weights_equal(correct_w, new_w)
 
 
-def layer_test_helper_flatten_2d_bak(layer, channel_index, data_format):
+def layer_test_helper_flatten_1d(layer, channel_index):
+    # This should test that the output is the correct shape so it should pass
+    # into a Dense layer rather than a Conv layer.
+    # The weighted layer is the previous layer,
+    # Create model
+    main_input = Input(shape=list(random.randint(10, 20, size=2)))
+    x = Conv1D(3, 3)(main_input)
+    x = layer(x)
+    x = Flatten()(x)
+    main_output = Dense(5)(x)
+    model = Model(inputs=main_input, outputs=main_output)
+
+    # Delete channels
+    del_layer_index = 1
+    next_layer_index = 4
+    del_layer = model.layers[del_layer_index]
+    surgeon = Surgeon(model)
+    surgeon.add_job('delete_channels', del_layer, channels=channel_index)
+    new_model = surgeon.operate()
+    new_w = new_model.layers[next_layer_index].get_weights()
+
+    # Calculate next layer's correct weights
+    flat_sz = np.prod(layer.get_output_shape_at(0)[1:])
+    channel_count = getattr(del_layer, utils.get_channels_attr(del_layer))
+    channel_index = [i % channel_count for i in channel_index]
+    delete_indices = [x + i for i in range(0, flat_sz, channel_count)
+                      for x in channel_index]
+
+    correct_w = model.layers[next_layer_index].get_weights()
+    correct_w[0] = np.delete(correct_w[0], delete_indices, axis=0)
+
+    assert weights_equal(correct_w, new_w)
+
+
+def layer_test_helper_flatten_2d(layer, channel_index, data_format):
     # This should test that the output is the correct shape so it should pass
     # into a Dense layer rather than a Conv layer.
     # The weighted layer is the previous layer,
@@ -301,11 +490,11 @@ def layer_test_helper_flatten_2d_bak(layer, channel_index, data_format):
 
     # Delete channels
     del_layer_index = 1
-    layer_index = 2
     next_layer_index = 4
-    layer = model.layers[layer_index]
     del_layer = model.layers[del_layer_index]
-    new_model = operations.delete_channels(model, del_layer, channel_index)
+    surgeon = Surgeon(model)
+    surgeon.add_job('delete_channels', del_layer, channels=channel_index)
+    new_model = surgeon.operate()
     new_w = new_model.layers[next_layer_index].get_weights()
 
     # Calculate next layer's correct weights
@@ -327,13 +516,13 @@ def layer_test_helper_flatten_2d_bak(layer, channel_index, data_format):
     assert weights_equal(correct_w, new_w)
 
 
-def layer_test_helper_flatten_2d(layer, channel_index, data_format):
+def layer_test_helper_flatten_3d(layer, channel_index, data_format):
     # This should test that the output is the correct shape so it should pass
     # into a Dense layer rather than a Conv layer.
     # The weighted layer is the previous layer,
     # Create model
-    main_input = Input(shape=list(random.randint(10, 20, size=3)))
-    x = Conv2D(3, [3, 3], data_format=data_format)(main_input)
+    main_input = Input(shape=list(random.randint(10, 20, size=4)))
+    x = Conv3D(3, [3, 3, 2], data_format=data_format)(main_input)
     x = layer(x)
     x = Flatten()(x)
     main_output = Dense(5)(x)
@@ -341,14 +530,11 @@ def layer_test_helper_flatten_2d(layer, channel_index, data_format):
 
     # Delete channels
     del_layer_index = 1
-    layer_index = 2
     next_layer_index = 4
-    layer = model.layers[layer_index]
     del_layer = model.layers[del_layer_index]
     surgeon = Surgeon(model)
     surgeon.add_job('delete_channels', del_layer, channels=channel_index)
     new_model = surgeon.operate()
-    # new_model = prune.delete_channels(model, del_layer, channel_index)
     new_w = new_model.layers[next_layer_index].get_weights()
 
     # Calculate next layer's correct weights
@@ -365,6 +551,49 @@ def layer_test_helper_flatten_2d(layer, channel_index, data_format):
     else:
         raise ValueError
     correct_w = model.layers[next_layer_index].get_weights()
+    correct_w[0] = np.delete(correct_w[0], delete_indices, axis=0)
+
+    assert weights_equal(correct_w, new_w)
+
+
+def layer_test_helper_merge_2d(layer, channel_index, data_format):
+    # This should test that the output is the correct shape so it should pass
+    # into a Dense layer rather than a Conv layer.
+    # The weighted layer is the previous layer,
+    # Create model
+    input_shape = list(random.randint(10, 20, size=3))
+    input_1 = Input(shape=input_shape)
+    input_2 = Input(shape=input_shape)
+    x = Conv2D(3, [3, 3], data_format=data_format, name='conv_1')(input_1)
+    y = Conv2D(3, [3, 3], data_format=data_format, name='conv_2')(input_2)
+    x = layer([x, y])
+    x = Flatten()(x)
+    main_output = Dense(5, name='dense_1')(x)
+    model = Model(inputs=[input_1, input_2], outputs=main_output)
+
+    # Delete channels
+    del_layer = model.get_layer('conv_1')
+    del_layer_2 = model.get_layer('conv_2')
+    surgeon = Surgeon(model)
+    surgeon.add_job('delete_channels', del_layer, channels=channel_index)
+    surgeon.add_job('delete_channels', del_layer_2, channels=channel_index)
+    new_model = surgeon.operate()
+    new_w = new_model.get_layer('dense_1').get_weights()
+
+    # Calculate next layer's correct weights
+    flat_sz = np.prod(layer.get_output_shape_at(0)[1:])
+    channel_count = getattr(del_layer, utils.get_channels_attr(del_layer))
+    channel_index = [i % channel_count for i in channel_index]
+    if data_format == 'channels_first':
+        delete_indices = [x * flat_sz // channel_count + i for x in
+                          channel_index
+                          for i in range(0, flat_sz // channel_count, )]
+    elif data_format == 'channels_last':
+        delete_indices = [x + i for i in range(0, flat_sz, channel_count)
+                          for x in channel_index]
+    else:
+        raise ValueError
+    correct_w = model.get_layer('dense_1').get_weights()
     correct_w[0] = np.delete(correct_w[0], delete_indices, axis=0)
 
     assert weights_equal(correct_w, new_w)
@@ -424,13 +653,13 @@ def test_delete_layer_reuse():
     x = dense_2(x)
     output_1 = dense_4(x)
     # TODO: use clean_copy once keras issue 4160 has been fixed
-    # model_1 = prune.clean_copy(Model(input_1, output_1))
+    # model_1 = utils.clean_copy(Model(input_1, output_1))
     model_1 = Model(input_1, output_1)
     # Create the expected modified model
     x = dense_1(input_1)
     x = dense_3(x)
     output_2 = dense_4(x)
-    # model_2_exp = prune.clean_copy(Model(input_1, output_2))
+    # model_2_exp = utils.clean_copy(Model(input_1, output_2))
     model_2_exp = Model(input_1, output_2)
     # Delete layer dense_2
     model_2 = operations.delete_layer(model_1,
