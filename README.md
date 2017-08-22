@@ -22,13 +22,21 @@ Example usage:
 The `Surgeon` class enables many modifications to be performed in a single operation.\
 Example usage:
 ```python
+# model is a Keras model
+# layer_1 and layer_2 are Keras layers from model
+# channels is a list of integers; indices of the channels to be deleted
 from kerassurgeon import Surgeon
 surgeon = Surgeon(model)
 surgeon.add_job('delete_channels', model, layer_1, channels=channels)
 surgeon.add_job('insert_layer', model, layer_2, new_layer=layer_3)
-surgeon.operate()
+new_model = surgeon.operate()
 ```
 The identify module contains method to identify which channels to prune.
+
+
+##Documentation
+The docstrings and this file contain all of the documentation. Standalone 
+documentation may be added in the future.
 
 
 ##Motivation
@@ -48,7 +56,8 @@ Any feedback on best practices that I may be unaware of would be most welcome.
 pip install kerassurgeon
 ```
 ##Examples:
-The following examples are both based on a simple method of identifying which neurons to 
+Examples are in `kerassurgeon.examples`.\
+Both examples are based on a simple method of identifying which neurons to 
 prune: high Average Percentage of Zeros (ApoZ) as described in [Hu et al. (2016)][].\
 Neither example is particularly good at demonstrating the benefits of pruning 
 but they show how Keras-surgeon can be used.\
@@ -73,6 +82,7 @@ the `Surgeon` Class.
 
 
 ##Limitations:
+Only python 3 is currently supported. Only python 3.5 has been tested.\
 The following layers are not fully supported; `delete_channels` might not work 
 on models containing these layers (it depends if they are affected by the 
 operation):
@@ -104,7 +114,6 @@ run individually.\
 Write unit tests for the utility functions.\
 This package pretty tightly coupled with Keras which makes unit testing difficult.
 Some component tests have been written but it needs more work.
-Some layers do not have tests yet.
 
 ###Examples
 Write better examples.
