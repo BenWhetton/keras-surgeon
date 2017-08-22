@@ -1,4 +1,5 @@
 #Keras-surgeon
+
 ##Introduction
 Keras-surgeon provides simple methods for modifying trained 
 [Keras][] models. The following functionality is currently implemented:
@@ -27,7 +28,7 @@ surgeon.add_job('delete_channels', model, layer_1, channels=channels)
 surgeon.add_job('insert_layer', model, layer_2, new_layer=layer_3)
 surgeon.operate()
 ```
-The identify module contains method to identify which channels to prune.  
+The identify module contains method to identify which channels to prune.
 
 
 ##Motivation
@@ -70,9 +71,11 @@ data set (based on a combination of [Tensorflow tutorial] and [Keras blog post])
 `inception_flowers_prune` shows how to delete channels from many layers simultaneously using 
 the `Surgeon` Class.
 
+
 ##Limitations:
-The following layers are not fully supported; `delete_channels` cannot be used on
-any models containing these layers:
+The following layers are not fully supported; `delete_channels` might not work 
+on models containing these layers (it depends if they are affected by the 
+operation):
 * `Lambda`
 * `SeparableConv2D`
 * `Conv2DTranspose`
@@ -80,10 +83,11 @@ any models containing these layers:
 * `LocallyConnected2D`
 * `TimeDistributed`
 * `Bidirectional`
+* `Dot`
+* `PReLU`
 
 Recurrent layers’ sequence length must be defined.\
 The model’s input shape must be defined.
-
 
 
 ##Future improvements:
@@ -104,6 +108,7 @@ Some layers do not have tests yet.
 
 ###Examples
 Write better examples.
+
 
 ##Known major bugs:
 When using `delete_channels`, shared layers stop being shared if their weights 
