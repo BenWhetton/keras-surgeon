@@ -92,6 +92,7 @@ def main():
                               verbose=2)
         print('model loss after retraining: ', loss, '\n')
 
-main()
 
-# make a table of units, training accuracy and loss, validation accuracy and loss pre and post pruning
+if __name__ == '__main__':
+    main()
+

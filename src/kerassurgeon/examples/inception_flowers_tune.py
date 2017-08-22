@@ -174,6 +174,8 @@ def tune_model():
                         callbacks=[csv_logger])
     model.save_weights(tuned_weights_path)
 
-save_bottleneck_features()
-train_top_model()
-tune_model()
+
+if __name__ == '__main__':
+    save_bottleneck_features()
+    train_top_model()
+    tune_model()

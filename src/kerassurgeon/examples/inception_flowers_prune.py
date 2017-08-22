@@ -153,4 +153,6 @@ def get_model_apoz(model, generator):
     apoz_df = apoz_df.set_index('layer')
     return apoz_df
 
-iterative_prune_model()
+
+if __name__ == '__main__':
+    iterative_prune_model()
