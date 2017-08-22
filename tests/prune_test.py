@@ -3,10 +3,14 @@ import os
 import pytest
 import numpy as np
 from keras import models
-from keras import layers
+from keras.models import Sequential, Model
+from keras.layers import Input, Dense, Flatten
+from keras.layers import Conv2D, MaxPool2D, Cropping2D, UpSampling2D
+from keras.layers import ZeroPadding2D, AveragePooling2D, GlobalAveragePooling2D
+from keras.layers import SimpleRNN, GRU, LSTM, BatchNormalization
 from numpy import random
 
-import kerassurgeon.operations
+from kerassurgeon import operations
 from kerassurgeon import utils
 from kerassurgeon import Surgeon
 
@@ -23,8 +27,31 @@ def channel_index(request):
     return request.param
 
 
+@pytest.fixture
+def model_1():
+    """Basic Lenet-style model test fixture with minimal channels"""
+    model = Sequential()
+    model.add(Conv2D(2,
+                     [3, 3],
+                     input_shape=[28, 28, 1],
+                     data_format='channels_last',
+                     activation='relu'))
+    model.add(Conv2D(2, [3, 3], activation='relu'))
+    model.add(Flatten())
+    model.add(Dense(2, activation='relu'))
+    model.add(Dense(10, activation='relu'))
+    return model
+
+
+@pytest.fixture
+def model_2():
+    """Basic Lenet-style model test fixture with minimal channels"""
+    model = model_1()
+    return Model(model.inputs, model.outputs)
+
+
 def test_rebuild_sequential(model_1):
-    model_2 = kerassurgeon.operations.rebuild_sequential(model_1.layers)
+    model_2 = operations.rebuild_sequential(model_1.layers)
     assert compare_models_seq(model_1, model_2)
 
 
@@ -34,37 +61,37 @@ def test_rebuild_submodel(model_2):
                     enumerate(model_2.output_layers_node_indices)]
     surgeon = Surgeon(model_2)
     outputs, _ = surgeon._rebuild_graph(model_2.inputs, output_nodes)
-    new_model = models.Model(model_2.inputs, outputs)
+    new_model = Model(model_2.inputs, outputs)
     assert compare_models(model_2, new_model)
 
 
 def test_delete_channels_rec_1():
-    inputs = layers.Input(shape=(784,))
-    x = layers.Dense(64, activation='relu')(inputs)
-    x = layers.Dense(64, activation='relu')(x)
-    predictions = layers.Dense(10, activation='softmax')(x)
+    inputs = Input(shape=(784,))
+    x = Dense(64, activation='relu')(inputs)
+    x = Dense(64, activation='relu')(x)
+    predictions = Dense(10, activation='softmax')(x)
 
-    model = models.Model(inputs=inputs, outputs=predictions)
+    model = Model(inputs=inputs, outputs=predictions)
     model.compile(optimizer='rmsprop',
                   loss='categorical_crossentropy',
                   metrics=['accuracy'])
-    kerassurgeon.operations.delete_channels(model, model.layers[2], [0])
+    operations.delete_channels(model, model.layers[2], [0])
 
 
 def model_3(data_format):
     if data_format is 'channels_last':
-        main_input = layers.Input(shape=[7, 7, 1])
+        main_input = Input(shape=[7, 7, 1])
     elif data_format is 'channels_first':
-        main_input = layers.Input(shape=[1, 7, 7])
+        main_input = Input(shape=[1, 7, 7])
     else:
         raise ValueError(data_format + ' is not a valid "data_format" value.')
-    x = layers.Conv2D(3, [3, 3], data_format=data_format)(main_input)
-    x = layers.Conv2D(3, [3, 3], data_format=data_format)(x)
-    x = layers.Flatten()(x)
-    x = layers.Dense(3)(x)
-    main_output = layers.Dense(1)(x)
+    x = Conv2D(3, [3, 3], data_format=data_format)(main_input)
+    x = Conv2D(3, [3, 3], data_format=data_format)(x)
+    x = Flatten()(x)
+    x = Dense(3)(x)
+    main_output = Dense(1)(x)
 
-    model = models.Model(inputs=main_input, outputs=main_output)
+    model = Model(inputs=main_input, outputs=main_output)
 
     # Set all of the weights
     w1 = [np.asarray([[[[1, 2, 3]], [[4, 5, 6]], [[7, 8, 9]]],
@@ -91,10 +118,10 @@ def model_3(data_format):
 def test_delete_channels_conv2d_conv2d(channel_index, data_format):
     model = model_3(data_format)
     layer_index = 1
-    new_model = kerassurgeon.operations.delete_channels(model,
-                                                        model.layers[layer_index],
-                                                        channel_index,
-                                                        copy=True)
+    new_model = operations.delete_channels(model,
+                                           model.layers[layer_index],
+                                           channel_index,
+                                           copy=True)
     channel_count = model.layers[layer_index].filters
     channel_index = [i % channel_count for i in channel_index]
     w = model.layers[layer_index].get_weights()
@@ -108,9 +135,9 @@ def test_delete_channels_conv2d_conv2d_next_layer(channel_index, data_format):
     model = model_3(data_format)
     layer_index = 1
     next_layer_index = 2
-    new_model = kerassurgeon.operations.delete_channels(model,
-                                                        model.layers[layer_index],
-                                                        channel_index)
+    new_model = operations.delete_channels(model,
+                                           model.layers[layer_index],
+                                           channel_index)
     channel_count = model.layers[layer_index].filters
     channel_index = [i % channel_count for i in channel_index]
     w = model.layers[next_layer_index].get_weights()
@@ -122,17 +149,17 @@ def test_delete_channels_conv2d_conv2d_next_layer(channel_index, data_format):
 
 def test_delete_channels_flatten(channel_index, data_format):
     # Create model
-    main_input = layers.Input(shape=list(random.randint(4, 10, size=3)))
-    x = layers.Conv2D(3, [3, 3], data_format=data_format)(main_input)
-    x = layers.Flatten()(x)
-    main_output = layers.Dense(5)(x)
-    model = models.Model(inputs=main_input, outputs=main_output)
+    main_input = Input(shape=list(random.randint(4, 10, size=3)))
+    x = Conv2D(3, [3, 3], data_format=data_format)(main_input)
+    x = Flatten()(x)
+    main_output = Dense(5)(x)
+    model = Model(inputs=main_input, outputs=main_output)
 
     # Delete channels
     layer_index = 1
     next_layer_index = 3
     layer = model.layers[layer_index]
-    new_model = kerassurgeon.operations.delete_channels(model, layer, channel_index)
+    new_model = operations.delete_channels(model, layer, channel_index)
     new_w = new_model.layers[next_layer_index].get_weights()
 
     # Calculate next layer's correct weights
@@ -154,47 +181,47 @@ def test_delete_channels_flatten(channel_index, data_format):
 
 
 def test_delete_channels_maxpooling2d(channel_index, data_format):
-    layer = layers.MaxPool2D([2, 2], data_format=data_format)
+    layer = MaxPool2D([2, 2], data_format=data_format)
     layer_test_helper_flatten_2d(layer, channel_index, data_format)
 
 
 def test_delete_channels_cropping2d(channel_index, data_format):
-    layer = layers.Cropping2D([2, 3], data_format=data_format)
+    layer = Cropping2D([2, 3], data_format=data_format)
     layer_test_helper_flatten_2d(layer, channel_index, data_format)
 
 
 def test_delete_channels_upsampling2d(channel_index, data_format):
-    layer = layers.UpSampling2D([2, 3], data_format=data_format)
+    layer = UpSampling2D([2, 3], data_format=data_format)
     layer_test_helper_flatten_2d(layer, channel_index, data_format)
 
 
 def test_delete_channels_zeropadding2d(channel_index, data_format):
-    layer = layers.ZeroPadding2D([2, 3], data_format=data_format)
+    layer = ZeroPadding2D([2, 3], data_format=data_format)
     layer_test_helper_flatten_2d(layer, channel_index, data_format)
 
 
 def test_delete_channels_averagepooling2d(channel_index, data_format):
-    layer = layers.AveragePooling2D([2, 3], data_format=data_format)
+    layer = AveragePooling2D([2, 3], data_format=data_format)
     layer_test_helper_flatten_2d(layer, channel_index, data_format)
 
 
 def test_delete_channels_globalaveragepooling2d(channel_index, data_format):
-    layer = layers.GlobalAveragePooling2D(data_format=data_format)
+    layer = GlobalAveragePooling2D(data_format=data_format)
     layer_test_helper_2d(layer, channel_index, data_format)
 
 
 def test_delete_channels_simplernn(channel_index):
-    layer = layers.SimpleRNN(9, return_sequences=True)
+    layer = SimpleRNN(9, return_sequences=True)
     recursive_test_helper(layer, channel_index)
 
 
 def test_delete_channels_gru(channel_index):
-    layer = layers.GRU(9, return_sequences=True)
+    layer = GRU(9, return_sequences=True)
     recursive_test_helper(layer, channel_index)
 
 
 def test_delete_channels_lstm(channel_index):
-    layer = layers.LSTM(9, return_sequences=True)
+    layer = LSTM(9, return_sequences=True)
     recursive_test_helper(layer, channel_index)
 
 
@@ -204,24 +231,24 @@ def test_delete_channels_batchnormalization(channel_index, data_format):
     else:
         axis = -1
 
-    layer = layers.BatchNormalization(axis=axis)
+    layer = BatchNormalization(axis=axis)
     layer_test_helper_flatten_2d(layer, channel_index, data_format)
 
 # TODO: Concatenate tests (test for batch axis?)
 
 
 def recursive_test_helper(layer, channel_index):
-    main_input = layers.Input(shape=[32, 10])
+    main_input = Input(shape=[32, 10])
     x = layer(main_input)
-    x = layers.GRU(4, return_sequences=False)(x)
-    main_output = layers.Dense(5)(x)
-    model = models.Model(inputs=main_input, outputs=main_output)
+    x = GRU(4, return_sequences=False)(x)
+    main_output = Dense(5)(x)
+    model = Model(inputs=main_input, outputs=main_output)
 
     # Delete channels
     del_layer_index = 1
     next_layer_index = 2
     del_layer = model.layers[del_layer_index]
-    new_model = kerassurgeon.operations.delete_channels(model, del_layer, channel_index)
+    new_model = operations.delete_channels(model, del_layer, channel_index)
     new_w = new_model.layers[next_layer_index].get_weights()
 
     # Calculate next layer's correct weights
@@ -238,17 +265,17 @@ def layer_test_helper_2d(layer, channel_index, data_format):
     # into a Dense layer rather than a Conv layer.
     # The weighted layer is the previous layer,
     # Create model
-    main_input = layers.Input(shape=list(random.randint(10, 20, size=3)))
-    x = layers.Conv2D(3, [3, 3], data_format=data_format)(main_input)
+    main_input = Input(shape=list(random.randint(10, 20, size=3)))
+    x = Conv2D(3, [3, 3], data_format=data_format)(main_input)
     x = layer(x)
-    main_output = layers.Dense(5)(x)
-    model = models.Model(inputs=main_input, outputs=main_output)
+    main_output = Dense(5)(x)
+    model = Model(inputs=main_input, outputs=main_output)
 
     # Delete channels
     del_layer_index = 1
     next_layer_index = 3
     del_layer = model.layers[del_layer_index]
-    new_model = kerassurgeon.operations.delete_channels(model, del_layer, channel_index)
+    new_model = operations.delete_channels(model, del_layer, channel_index)
     new_w = new_model.layers[next_layer_index].get_weights()
 
     # Calculate next layer's correct weights
@@ -265,12 +292,12 @@ def layer_test_helper_flatten_2d_bak(layer, channel_index, data_format):
     # into a Dense layer rather than a Conv layer.
     # The weighted layer is the previous layer,
     # Create model
-    main_input = layers.Input(shape=list(random.randint(10, 20, size=3)))
-    x = layers.Conv2D(3, [3, 3], data_format=data_format)(main_input)
+    main_input = Input(shape=list(random.randint(10, 20, size=3)))
+    x = Conv2D(3, [3, 3], data_format=data_format)(main_input)
     x = layer(x)
-    x = layers.Flatten()(x)
-    main_output = layers.Dense(5)(x)
-    model = models.Model(inputs=main_input, outputs=main_output)
+    x = Flatten()(x)
+    main_output = Dense(5)(x)
+    model = Model(inputs=main_input, outputs=main_output)
 
     # Delete channels
     del_layer_index = 1
@@ -278,7 +305,7 @@ def layer_test_helper_flatten_2d_bak(layer, channel_index, data_format):
     next_layer_index = 4
     layer = model.layers[layer_index]
     del_layer = model.layers[del_layer_index]
-    new_model = kerassurgeon.operations.delete_channels(model, del_layer, channel_index)
+    new_model = operations.delete_channels(model, del_layer, channel_index)
     new_w = new_model.layers[next_layer_index].get_weights()
 
     # Calculate next layer's correct weights
@@ -305,12 +332,12 @@ def layer_test_helper_flatten_2d(layer, channel_index, data_format):
     # into a Dense layer rather than a Conv layer.
     # The weighted layer is the previous layer,
     # Create model
-    main_input = layers.Input(shape=list(random.randint(10, 20, size=3)))
-    x = layers.Conv2D(3, [3, 3], data_format=data_format)(main_input)
+    main_input = Input(shape=list(random.randint(10, 20, size=3)))
+    x = Conv2D(3, [3, 3], data_format=data_format)(main_input)
     x = layer(x)
-    x = layers.Flatten()(x)
-    main_output = layers.Dense(5)(x)
-    model = models.Model(inputs=main_input, outputs=main_output)
+    x = Flatten()(x)
+    main_output = Dense(5)(x)
+    model = Model(inputs=main_input, outputs=main_output)
 
     # Delete channels
     del_layer_index = 1
@@ -352,14 +379,14 @@ def weights_equal(w1, w2):
 
 def test_delete_layer():
     # Create all model layers
-    input_1 = layers.Input(shape=[7, 7, 1])
-    conv2d_1 = layers.Conv2D(3, [3, 3], data_format='channels_last')
-    conv2d_2 = layers.Conv2D(3, [3, 3], data_format='channels_last')
-    flatten_1 = layers.Flatten()
-    dense_1 = layers.Dense(3)
-    dense_2 = layers.Dense(3)
-    dense_3 = layers.Dense(3)
-    dense_4 = layers.Dense(1)
+    input_1 = Input(shape=[7, 7, 1])
+    conv2d_1 = Conv2D(3, [3, 3], data_format='channels_last')
+    conv2d_2 = Conv2D(3, [3, 3], data_format='channels_last')
+    flatten_1 = Flatten()
+    dense_1 = Dense(3)
+    dense_2 = Dense(3)
+    dense_3 = Dense(3)
+    dense_4 = Dense(1)
     # Create the base model
     x = conv2d_1(input_1)
     x = conv2d_2(x)
@@ -368,7 +395,7 @@ def test_delete_layer():
     x = dense_2(x)
     x = dense_3(x)
     output_1 = dense_4(x)
-    model_1 = utils.clean_copy(models.Model(input_1, output_1))
+    model_1 = utils.clean_copy(Model(input_1, output_1))
     # Create the expected modified model
     x = conv2d_1(input_1)
     x = conv2d_2(x)
@@ -376,20 +403,20 @@ def test_delete_layer():
     x = dense_1(x)
     x = dense_3(x)
     output_2 = dense_4(x)
-    model_2_exp = utils.clean_copy(models.Model(input_1, output_2))
+    model_2_exp = utils.clean_copy(Model(input_1, output_2))
     # Delete layer dense_2
-    model_2 = kerassurgeon.operations.delete_layer(model_1, model_1.get_layer(dense_2.name))
+    model_2 = operations.delete_layer(model_1, model_1.get_layer(dense_2.name))
     # Compare the modified model with the expected modified model
     assert compare_models(model_2, model_2_exp)
 
 
 def test_delete_layer_reuse():
     # Create all model layers
-    input_1 = layers.Input(shape=[3])
-    dense_1 = layers.Dense(3)
-    dense_2 = layers.Dense(3)
-    dense_3 = layers.Dense(3)
-    dense_4 = layers.Dense(3)
+    input_1 = Input(shape=[3])
+    dense_1 = Dense(3)
+    dense_2 = Dense(3)
+    dense_3 = Dense(3)
+    dense_4 = Dense(3)
     # Create the model
     x = dense_1(input_1)
     x = dense_2(x)
@@ -398,96 +425,96 @@ def test_delete_layer_reuse():
     output_1 = dense_4(x)
     # TODO: use clean_copy once keras issue 4160 has been fixed
     # model_1 = prune.clean_copy(Model(input_1, output_1))
-    model_1 = models.Model(input_1, output_1)
+    model_1 = Model(input_1, output_1)
     # Create the expected modified model
     x = dense_1(input_1)
     x = dense_3(x)
     output_2 = dense_4(x)
     # model_2_exp = prune.clean_copy(Model(input_1, output_2))
-    model_2_exp = models.Model(input_1, output_2)
+    model_2_exp = Model(input_1, output_2)
     # Delete layer dense_2
-    model_2 = kerassurgeon.operations.delete_layer(model_1,
-                                                   model_1.get_layer(dense_2.name),
-                                                   copy=False)
+    model_2 = operations.delete_layer(model_1,
+                                      model_1.get_layer(dense_2.name),
+                                      copy=False)
     # Compare the modified model with the expected modified model
     assert compare_models(model_2, model_2_exp)
 
 
 def test_replace_layer():
     # Create all model layers
-    input_1 = layers.Input(shape=[7, 7, 1])
-    dense_1 = layers.Dense(3)
-    dense_2 = layers.Dense(3)
-    dense_3 = layers.Dense(3)
-    dense_4 = layers.Dense(1)
+    input_1 = Input(shape=[7, 7, 1])
+    dense_1 = Dense(3)
+    dense_2 = Dense(3)
+    dense_3 = Dense(3)
+    dense_4 = Dense(1)
     # Create the model
     x = dense_1(input_1)
     x = dense_2(x)
     output_1 = dense_4(x)
-    model_1 = utils.clean_copy(models.Model(input_1, output_1))
+    model_1 = utils.clean_copy(Model(input_1, output_1))
     # Create the expected modified model
     x = dense_1(input_1)
     x = dense_3(x)
     output_2 = dense_4(x)
-    model_2_exp = utils.clean_copy(models.Model(input_1, output_2))
+    model_2_exp = utils.clean_copy(Model(input_1, output_2))
     # Replace dense_2 with dense_3 in model_1
-    model_2 = kerassurgeon.operations.replace_layer(model_1,
-                                                    model_1.get_layer(dense_2.name),
-                                                    dense_3)
+    model_2 = operations.replace_layer(model_1,
+                                       model_1.get_layer(dense_2.name),
+                                       dense_3)
     # Compare the modified model with the expected modified model
     assert compare_models(model_2, model_2_exp)
 
 
 def test_insert_layer():
     # Create all model layers
-    input_1 = layers.Input(shape=[7, 7, 1])
-    dense_1 = layers.Dense(3)
-    dense_2 = layers.Dense(3)
-    dense_3 = layers.Dense(3)
-    dense_4 = layers.Dense(1)
+    input_1 = Input(shape=[7, 7, 1])
+    dense_1 = Dense(3)
+    dense_2 = Dense(3)
+    dense_3 = Dense(3)
+    dense_4 = Dense(1)
     # Create the model
     x = dense_1(input_1)
     x = dense_2(x)
     output_1 = dense_4(x)
-    model_1 = utils.clean_copy(models.Model(input_1, output_1))
+    model_1 = utils.clean_copy(Model(input_1, output_1))
     # Create the expected modified model
     x = dense_1(input_1)
     x = dense_2(x)
     x = dense_3(x)
     output_2 = dense_4(x)
-    model_2_exp = utils.clean_copy(models.Model(input_1, output_2))
+    model_2_exp = utils.clean_copy(Model(input_1, output_2))
     # Insert dense_3 before dense_4 in model_1
-    model_2 = kerassurgeon.operations.insert_layer(model_1,
-                                                   model_1.get_layer(dense_4.name),
-                                                   dense_3)
+    model_2 = operations.insert_layer(model_1,
+                                      model_1.get_layer(dense_4.name),
+                                      dense_3)
     # Compare the modified model with the expected modified model
     assert compare_models(model_2, model_2_exp)
 
 
 def test_delete_layer_same_layer_outputs():
     # Create all model layers
-    input_1 = layers.Input(shape=(10,))
-    dense_1 = layers.Dense(3)
-    dense_2 = layers.Dense(3)
-    dense_3 = layers.Dense(3)
-    dense_4 = layers.Dense(1)
+    input_1 = Input(shape=(10,))
+    dense_1 = Dense(3)
+    dense_2 = Dense(3)
+    dense_3 = Dense(3)
+    dense_4 = Dense(1)
     # Create the base model
     x = dense_1(input_1)
     y = dense_2(x)
     x = dense_3(x)
     output_1 = dense_4(x)
     output_2 = dense_4(y)
-    model_1 = utils.clean_copy(models.Model(input_1, [output_1, output_2]))
+    model_1 = utils.clean_copy(Model(input_1, [output_1, output_2]))
     # Create the expected modified model
     x = dense_1(input_1)
     y = dense_2(x)
     output_1 = dense_4(x)
     output_2 = dense_4(y)
-    model_2_exp = utils.clean_copy(models.Model(input_1, [output_1, output_2]))
+    model_2_exp = utils.clean_copy(Model(input_1, [output_1, output_2]))
     # Delete layer dense_3
-    model_2 = kerassurgeon.operations.delete_layer(model_1,
-                                                   model_1.get_layer(dense_3.name),
-                                                   copy=False)
+    model_2 = operations.delete_layer(model_1,
+                                      model_1.get_layer(dense_3.name),
+                                      copy=False)
     # Compare the modified model with the expected modified model
     assert compare_models(model_2, model_2_exp)
 
