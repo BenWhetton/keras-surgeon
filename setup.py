@@ -8,17 +8,15 @@ setup(
     version="0.0.0a1",
     url='',
     license='MIT',
-    description='A library for pruning channels/neurons from trained Keras models '
-                'while preserving the trained weights.',
+    description='A library for performing network surgery on trained Keras models.'
+                'Useful for deep neural network pruning.',
     author='Ben Whetton',
     author_email='Ben.Whetton@gmail.com',
-    install_requires=['numpy',
-                      # 'tensorflow', # uncomment this and comment out tensorflow-gpu if not using gpu
-                      'tensorflow-gpu',
-                      'keras',
+    install_requires=['keras'],
 
-                      'pandas'],
+    extras_require={'pd': ['pandas'], },
+
     tests_require=['pytest'],
-    packages=find_packages("src"),
+    packages=find_packages('src'),
     package_dir={'': 'src'}
 )

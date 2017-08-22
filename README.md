@@ -7,13 +7,13 @@ Keras-surgeon provides simple methods for modifying trained
 * insert layers
 * replace layers
 
-Keras-Surgeon is compatible with any model architecture. Any number of 
+Keras-surgeon is compatible with any model architecture. Any number of 
 layers can be modified in a single traversal of the network.
 
 These kinds of modifications are sometimes known as network surgery which 
 inspired the name of this package.
 
-The {{{{}}} module contains simple methods to perform network surgery on a 
+The `operations` module contains simple methods to perform network surgery on a 
 single layer within a model.\
 Example usage:
 
@@ -50,12 +50,13 @@ pip install kerassurgeon
 The following examples are both based on a simple method of identifying which neurons to 
 prune: high Average Percentage of Zeros (ApoZ) as described in [Hu et al. (2016)][].\
 Neither example is particularly good at demonstrating the benefits of pruning 
-but they show how Keras-Surgeon can be used.\
+but they show how Keras-surgeon can be used.\
 I would welcome any good examples from other users.
 
 ###Pruning Lenet trained on MNIST:
-This is a very simple example showing the effects of deleting channels from a 
-simple Lenet style network trained on MNIST. It demonstrates using the simple methods from `kerasurgeon.{{{}}}`
+`lenet_minst` is a very simple example showing the effects of deleting channels from a 
+simple Lenet style network trained on MNIST. It demonstrates using the simple 
+methods from `kerasurgeon.operations`.
 Pruning all neurons with ApoZ higher than 1 standard deviation above the mean 
 ApoZ in the final convolutional layer and then re-training the network gives 
 the following results:
@@ -64,13 +65,13 @@ the following results:
 This example shows how to delete channels from many layers simultaneously using 
 the `Surgeon` Class.\
 It is in two parts:  
-{{{}}} shows how to fine-tune the Inception V3 model on a small flowers 
-data set (inspired by a combination of {{{}}} and {{{}}}).\
-{{{}}} shows how to delete channels from many layers simultaneously using 
-the Surgeon Class.
+`inception_flowers_tune` shows how to fine-tune the Inception V3 model on a small flowers 
+data set (based on a combination of [Tensorflow tutorial] and [Keras blog post]).\
+`inception_flowers_prune` shows how to delete channels from many layers simultaneously using 
+the `Surgeon` Class.
 
 ##Limitations:
-The following layers are not fully supported; delete_channels cannot be used on
+The following layers are not fully supported; `delete_channels` cannot be used on
 any models containing these layers:
 * `Lambda`
 * `SeparableConv2D`
@@ -85,9 +86,9 @@ The model’s input shape must be defined.
 
 
 
-##Further improvements:
+##Future improvements:
 ###Architecture:
-Investigate more efficienct ways of modifying a layer in the middle of a model 
+Investigate more efficient ways of modifying a layer in the middle of a model 
 without re-building the whole network.
 
 ###Performance:
@@ -98,9 +99,7 @@ Investigate why tests are much slower when they are all run than when they are
 run individually.\
 Write unit tests for the utility functions.\
 This package pretty tightly coupled with Keras which makes unit testing difficult.
-Due to my time being limited, I have opted for quickly writing some component tests: 
-one per layer class. When this project gains some interest, I’ll put more effort 
-into sorting it out.
+Some component tests have been written but it needs more work.
 Some layers do not have tests yet.
 
 ###Examples
@@ -114,3 +113,5 @@ sharing will be broken.
 
 [Hu et al. (2016)]: http://arxiv.org/abs/1607.03250
 [Keras]: https://github.com/fchollet/keras
+[Tensorflow tutorial]: https://www.tensorflow.org/tutorials/image_retraining#training_on_flowers
+[Keras blog post]: https://blog.keras.io/building-powerful-image-classification-models-using-very-little-data.html
