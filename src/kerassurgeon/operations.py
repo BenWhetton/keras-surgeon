@@ -1,27 +1,6 @@
 from kerassurgeon.surgeon import Surgeon
 
 
-def rebuild_sequential(layers):
-    """Rebuild a sequential model from a list of layers.
-
-    Arguments:
-        layers: List of Keras layers
-
-    Returns:
-        A Keras Sequential model
-    """
-    from keras.models import Sequential
-
-    weights = []
-    for layer in layers:
-        weights.append(layer.get_weights())
-
-    new_model = Sequential(layers=layers)
-    for i, layer in enumerate(new_model.layers):
-        layer.set_weights(weights[i])
-    return new_model
-
-
 def delete_layer(model, layer, *, node_indices=None, copy=True):
     """Delete instances of a layer from a Keras model.
 

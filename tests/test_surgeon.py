@@ -56,11 +56,6 @@ def model_2():
     return Model(model.inputs, model.outputs)
 
 
-def test_rebuild_sequential(model_1):
-    model_2 = operations.rebuild_sequential(model_1.layers)
-    assert compare_models_seq(model_1, model_2)
-
-
 def test_rebuild_submodel(model_2):
     output_nodes = [model_2.output_layers[i].inbound_nodes[node_index]
                     for i, node_index in

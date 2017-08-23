@@ -3,8 +3,8 @@
 ## Introduction
 Keras-surgeon provides simple methods for modifying trained 
 [Keras][] models. The following functionality is currently implemented:
-* Delete neurons/channels from layers
-* Delete layers
+* delete neurons/channels from layers
+* delete layers
 * insert layers
 * replace layers
 
@@ -17,21 +17,28 @@ inspired the name of this package.
 The `operations` module contains simple methods to perform network surgery on a 
 single layer within a model.\
 Example usage:
-
+```python
+from kerassurgeon.operations import delete_layer, insert_layer, delete_channels
+# delete layer_1 from a model
+model = delete_layer(model, layer_1)
+# insert new_layer_1 before layer_2 in a model
+model = insert_layer(model, layer_2, new_layer_3)
+# delete channels 0, 4 and 67 from layer_2 in model
+model = delete_channels(model, layer_2, [0,4,67])
+```
 
 The `Surgeon` class enables many modifications to be performed in a single operation.\
 Example usage:
 ```python
-# model is a Keras model
-# layer_1 and layer_2 are Keras layers from model
-# channels is a list of integers; indices of the channels to be deleted
+# delete channels 2, 6 and 8 from layer_1 and insert new_layer_1 before 
+# layer_2 in a model
 from kerassurgeon import Surgeon
 surgeon = Surgeon(model)
-surgeon.add_job('delete_channels', model, layer_1, channels=channels)
-surgeon.add_job('insert_layer', model, layer_2, new_layer=layer_3)
+surgeon.add_job('delete_channels', model, layer_1, channels=[2, 6, 8])
+surgeon.add_job('insert_layer', model, layer_2, new_layer=new_layer_1)
 new_model = surgeon.operate()
 ```
-The `identify` module contains method to identify which channels to prune.
+The `identify` module contains methods to identify which channels to prune.
 
 
 ## Documentation
