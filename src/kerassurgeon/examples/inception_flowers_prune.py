@@ -25,11 +25,11 @@ output_dir = 'inception_flowers/'
 train_data_dir = output_dir+'data/train/'
 validation_data_dir = output_dir+'data/validation/'
 tuned_weights_path = output_dir+'tuned_weights.h5'
-epochs = 50
+epochs = 15
 batch_size = 16
 val_batch_size = 16
 percent_pruning = 2
-total_percent_pruning = 20
+total_percent_pruning = 50
 
 
 def iterative_prune_model():
@@ -84,14 +84,14 @@ def iterative_prune_model():
     percent_pruned = 0
     while percent_pruned <= total_percent_pruning:
         # Prune the model
-        percent_pruned += percent_pruning
-        print('pruning up to ', str(percent_pruned),
-              '% of the original model weights')
         apoz_df = get_model_apoz(model, validation_generator)
         if percent_pruned == 0:
             total_channels = apoz_df['apoz'].count()
             n_channels_delete = int(
                 math.floor(percent_pruning / 100 * total_channels))
+        percent_pruned += percent_pruning
+        print('pruning up to ', str(percent_pruned),
+              '% of the original model weights')
         model = prune_model(model, apoz_df, n_channels_delete)
 
         # Re-train the model
