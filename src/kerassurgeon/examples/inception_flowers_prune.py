@@ -9,11 +9,13 @@ import gc
 from keras.applications import inception_v3
 from keras.preprocessing.image import ImageDataGenerator
 from keras.optimizers import SGD
-from keras.models import Model
+from keras.models import Model, load_model
 from keras.layers import Dense
 from keras.callbacks import CSVLogger
+import keras.backend as K
 import pandas as pd
 import numpy as np
+import tensorflow as tf
 
 from kerassurgeon.identify import get_apoz
 from kerassurgeon import Surgeon
@@ -83,6 +85,8 @@ def iterative_prune_model():
     # Incrementally prune the network, retraining it each time
     percent_pruned = 0
     while percent_pruned <= total_percent_pruning:
+        if percent_pruned > 0:
+            model = load_model(output_dir + checkpoint_name + '.h5')
         # Prune the model
         apoz_df = get_model_apoz(model, validation_generator)
         if percent_pruned == 0:
@@ -111,6 +115,9 @@ def iterative_prune_model():
                             workers=4,
                             callbacks=[csv_logger])
         model.save(output_dir + checkpoint_name + '.h5')
+        del model
+        K.clear_session()
+        tf.reset_default_graph()
 
     # Evaluate the final model performance
     loss = model.evaluate_generator(validation_generator,
