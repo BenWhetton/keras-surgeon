@@ -1,7 +1,9 @@
 import os
 
+import tensorflow as tf
 import pytest
 import numpy as np
+import keras.backend as K
 from keras.models import Sequential, Model
 from keras.layers import Input, Dense, Flatten
 from keras.layers import Conv1D, MaxPool1D, Cropping1D, UpSampling1D
@@ -21,6 +23,16 @@ from kerassurgeon import utils
 from kerassurgeon import Surgeon
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+
+
+# Clear the tensorflow session and reset the default graph after each test.
+# This prevents the testing from slowing down as more and more models are added
+# to the tensorflow session.
+@pytest.fixture(autouse=True)
+def clear_tf():
+    yield
+    K.clear_session()
+    tf.reset_default_graph()
 
 
 @pytest.fixture(params=['channels_first', 'channels_last'])
