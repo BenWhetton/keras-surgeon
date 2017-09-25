@@ -336,8 +336,6 @@ class Surgeon:
             outbound_mask: Mask corresponding to `new_layer`.
         """
 
-        # TODO: This breaks layer sharing. Write a test for this.
-
         # if delete_mask is None or all values are True, it does not affect
         # this layer or any layers above/downstream from it
         layer = node.outbound_layer
@@ -345,10 +343,14 @@ class Surgeon:
             new_layer = layer
             outbound_mask = None
             return new_layer, outbound_mask
-        elif any(mask is None for mask in inbound_masks):
+
+        if any(mask is None for mask in inbound_masks):
             inbound_masks = [np.ones(shape[1:], dtype=bool)
                              if inbound_masks[i] is None else inbound_masks[i]
                              for i, shape in enumerate(node.input_shapes)]
+
+        if len(layer.inbound_nodes) > 1 and layer in self._replace_layers_map.keys():
+            return self._replace_layers_map[layer]
 
         output_shape = utils.single_element(node.output_shapes)
         input_shape = utils.single_element(node.input_shapes)
@@ -565,6 +567,9 @@ class Surgeon:
             # Warning/error needed for Reshape if channels axis is split
             raise ValueError('"{0}" layers are currently '
                              'unsupported.'.format(layer_class))
+
+        if len(layer.inbound_nodes) > 1 and new_layer != layer:
+            self._replace_layers_map[layer] = (new_layer, outbound_mask)
 
         return new_layer, outbound_mask
 

@@ -755,6 +755,40 @@ def test_delete_layer_same_layer_outputs():
     assert compare_models(model_2, model_2_exp)
 
 
+def test_delete_channels_downstream_sharing():
+    # Create all model layers
+    input_1 = Input(shape=(5,))
+    dense_1 = Dense(4, name='dense_1')
+    dense_2 = Dense(4, name='dense_2')
+    dense_3 = Dense(3, name='dense_3')
+    # Create the base model
+    x = dense_1(input_1)
+    y = dense_2(input_1)
+    output_1 = dense_3(x)
+    output_2 = dense_3(y)
+    model_1 = utils.clean_copy(Model(input_1, [output_1, output_2]))
+    # Delete channels from dense_1 and dense_2
+    surgeon = Surgeon(model_1)
+    surgeon.add_job('delete_channels', model_1.get_layer(dense_1.name), channels=[0])
+    surgeon.add_job('delete_channels', model_1.get_layer(dense_2.name), channels=[1])
+    model_2 = surgeon.operate()
+    # Create the expected model
+    # input_1 = Input(shape=(5,))
+    dense_1_exp = Dense(3, name='dense_1')
+    dense_2_exp = Dense(3, name='dense_2')
+    dense_3_exp = Dense(3, name='dense_3')
+    # Create the base model
+    x = dense_1_exp(input_1)
+    y = dense_2_exp(input_1)
+    output_1 = dense_3_exp(x)
+    output_2 = dense_3_exp(y)
+    model_2_exp = utils.clean_copy(Model(input_1, [output_1, output_2]))
+
+    config_1 = model_2.get_config()
+    config_2 = model_2_exp.get_config()
+    config_2['name'] = config_1['name']  # make the config names identical
+    assert config_1 == config_2
+
 def compare_models(model_1, model_2):
     config_1 = model_1.get_config()
     config_2 = model_2.get_config()
