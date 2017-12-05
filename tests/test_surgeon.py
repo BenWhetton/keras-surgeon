@@ -789,6 +789,57 @@ def test_delete_channels_downstream_sharing():
     config_2['name'] = config_1['name']  # make the config names identical
     assert config_1 == config_2
 
+
+def test_delete_all_channels_in_branch():
+    input_1 = Input(shape=(20, 20, 3))
+    conv_1 = Conv2D(2, [3, 3], name='conv_1')
+    conv_2 = Conv2D(3, [3, 3], name='conv_2')
+    cat_1 = Concatenate(name='cat_1')
+
+    x = conv_1(input_1)
+    y = conv_2(input_1)
+    output_1 = cat_1([x, y])
+    model_1 = utils.clean_copy(Model(input_1, output_1))
+
+    surgeon = Surgeon(model_1, copy=True)
+    surgeon.add_job('delete_channels', model_1.get_layer('conv_1'), channels=[0, 1])
+    model_2 = surgeon.operate()
+
+    output_1 = conv_2(input_1)
+    model_2_exp = utils.clean_copy(Model(input_1, output_1))
+
+    config_1 = model_2.get_config()
+    config_2 = model_2_exp.get_config()
+    config_2['name'] = config_1['name']  # make the config names identical
+    assert config_1 == config_2
+
+
+def test_delete_all_channels_in_long_branch():
+    input_1 = Input(shape=(20, 20, 3))
+    conv_1 = Conv2D(2, [3, 3], name='conv_1')
+    conv_2 = Conv2D(3, [3, 3], name='conv_2')
+    conv_3 = Conv2D(4, [1, 1], name='conv_3')
+    cat_1 = Concatenate(name='cat_1')
+
+    x = conv_1(input_1)
+    x = conv_3(x)
+    y = conv_2(input_1)
+    output_1 = cat_1([x, y])
+    model_1 = utils.clean_copy(Model(input_1, output_1))
+
+    surgeon = Surgeon(model_1, copy=True)
+    surgeon.add_job('delete_channels', model_1.get_layer('conv_1'), channels=[0, 1])
+    model_2 = surgeon.operate()
+
+    output_1 = conv_2(input_1)
+    model_2_exp = utils.clean_copy(Model(input_1, output_1))
+
+    config_1 = model_2.get_config()
+    config_2 = model_2_exp.get_config()
+    config_2['name'] = config_1['name']  # make the config names identical
+    assert config_1 == config_2
+
+
 def compare_models(model_1, model_2):
     config_1 = model_1.get_config()
     config_2 = model_2.get_config()

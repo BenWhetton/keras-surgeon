@@ -237,10 +237,22 @@ class Surgeon:
                 inputs, input_masks = zip(
                     *[_rebuild_rec(n) for n in inbound_nodes])
 
-                # Apply masks to the node's layer's  weights and call the layer
-                # on the inputs
-                new_layer, output_mask = self._apply_delete_mask(node, input_masks)
-                output = new_layer(utils.single_element(list(inputs)))
+                if all(i is None for i in inputs):
+                    output = None
+                    output_mask = np.zeros(node.output_shapes[0][1:], dtype=bool)
+                elif any(i is None for i in inputs):
+                    if node.outbound_layer.__class__.__name__ != 'Concatenate':
+                        TypeError('Inputs can only be missing for concatenate layers.')
+                    # remove Nones from inputs list
+                    inputs = [i for i in inputs if i is not None]
+                    new_layer, output_mask = self._apply_delete_mask(node, input_masks)
+                    if len(inputs) == 1:
+                        output = utils.single_element(list(inputs))
+                    else:
+                        output = new_layer(utils.single_element(list(inputs)))
+                else:
+                    new_layer, output_mask = self._apply_delete_mask(node, input_masks)
+                    output = new_layer(utils.single_element(list(inputs)))
 
                 # Record that this node has been rebuild
                 self._finished_nodes[node] = (output, output_mask)
@@ -290,6 +302,14 @@ class Surgeon:
         """Delete selected channels of node.outbound_layer. Add it to the graph.
         """
         old_layer = node.outbound_layer
+        old_layer_output = utils.single_element(node.output_tensors)
+        # Create a mask to propagate the deleted channels to downstream layers
+        new_delete_mask = self._make_delete_mask(old_layer, channels)
+
+        if len(set(channels)) == getattr(old_layer, utils.get_channels_attr(old_layer)):
+            self._replace_tensors[old_layer_output] = (None, new_delete_mask)
+            return None
+
         # If this layer has already been operated on, use the cached copy of
         # the new layer. Otherwise, apply the inbound delete mask and
         # delete channels to obtain the new layer
@@ -303,12 +323,8 @@ class Surgeon:
             if layer_name:
                 new_layer.name = layer_name
             self._new_layers_map[old_layer] = new_layer
-        # Create a mask to propagate the deleted channels to downstream layers
-        new_delete_mask = self._make_delete_mask(old_layer, channels)
-        # Call the new layer on the rebuild submodel's inputs
         new_output = new_layer(utils.single_element(inputs))
         # Replace the original layer's output with the modified layer's output
-        old_layer_output = utils.single_element(node.output_tensors)
         self._replace_tensors[old_layer_output] = (new_output, new_delete_mask)
 
     def _apply_delete_mask(self, node, inbound_masks):
@@ -344,11 +360,14 @@ class Surgeon:
             outbound_mask = None
             return new_layer, outbound_mask
 
+        # If one or more of the masks are None, replace them with ones.
         if any(mask is None for mask in inbound_masks):
             inbound_masks = [np.ones(shape[1:], dtype=bool)
                              if inbound_masks[i] is None else inbound_masks[i]
                              for i, shape in enumerate(node.input_shapes)]
 
+        # If the layer is shared and has already been affected by this
+        # operation, use the cached new layer.
         if len(layer.inbound_nodes) > 1 and layer in self._replace_layers_map.keys():
             return self._replace_layers_map[layer]
 
