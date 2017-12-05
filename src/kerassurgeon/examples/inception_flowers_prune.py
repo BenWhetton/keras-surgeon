@@ -4,7 +4,6 @@ see setup instructions in inception_flowers_tune.py
 inception_flowers_tune.py must be run first
 """
 import math
-import gc
 
 from keras.applications import inception_v3
 from keras.preprocessing.image import ImageDataGenerator
@@ -66,6 +65,7 @@ def iterative_prune_model():
         target_size=(img_height, img_width),
         batch_size=batch_size,
         class_mode='categorical')
+    train_steps = train_generator.n // train_generator.batch_size
 
     test_datagen = ImageDataGenerator(
         preprocessing_function=inception_v3.preprocess_input)
@@ -75,6 +75,7 @@ def iterative_prune_model():
         target_size=(img_height, img_width),
         batch_size=val_batch_size,
         class_mode='categorical')
+    val_steps = validation_generator.n // validation_generator.batch_size
 
     # Evaluate the model performance before pruning
     loss = model.evaluate_generator(validation_generator,
@@ -82,21 +83,33 @@ def iterative_prune_model():
                                     validation_generator.batch_size)
     print('original model validation loss: ', loss[0], ', acc: ', loss[1])
 
+    total_channels = get_total_channels(model)
+    n_channels_delete = int(math.floor(percent_pruning / 100 * total_channels))
+
     # Incrementally prune the network, retraining it each time
     percent_pruned = 0
+    # If percent_pruned > 0, continue pruning from previous checkpoint
+    if percent_pruned > 0:
+        checkpoint_name = ('inception_flowers_pruning_' + str(percent_pruned)
+                           + 'percent')
+        model = load_model(output_dir + checkpoint_name + '.h5')
+
     while percent_pruned <= total_percent_pruning:
-        if percent_pruned > 0:
-            model = load_model(output_dir + checkpoint_name + '.h5')
         # Prune the model
         apoz_df = get_model_apoz(model, validation_generator)
-        if percent_pruned == 0:
-            total_channels = apoz_df['apoz'].count()
-            n_channels_delete = int(
-                math.floor(percent_pruning / 100 * total_channels))
         percent_pruned += percent_pruning
         print('pruning up to ', str(percent_pruned),
               '% of the original model weights')
         model = prune_model(model, apoz_df, n_channels_delete)
+
+        # Clean up tensorflow session after pruning and re-load model
+        checkpoint_name = ('inception_flowers_pruning_' + str(percent_pruned)
+                           + 'percent')
+        model.save(output_dir + checkpoint_name + '.h5')
+        del model
+        K.clear_session()
+        tf.reset_default_graph()
+        model = load_model(output_dir + checkpoint_name + '.h5')
 
         # Re-train the model
         model.compile(loss='categorical_crossentropy',
@@ -106,18 +119,12 @@ def iterative_prune_model():
                            + 'percent')
         csv_logger = CSVLogger(output_dir + checkpoint_name + '.csv')
         model.fit_generator(train_generator,
-                            steps_per_epoch=train_generator.n //
-                                            train_generator.batch_size,
+                            steps_per_epoch=train_steps,
                             epochs=epochs,
                             validation_data=validation_generator,
-                            validation_steps=validation_generator.n //
-                                             validation_generator.batch_size,
+                            validation_steps=val_steps,
                             workers=4,
                             callbacks=[csv_logger])
-        model.save(output_dir + checkpoint_name + '.h5')
-        del model
-        K.clear_session()
-        tf.reset_default_graph()
 
     # Evaluate the final model performance
     loss = model.evaluate_generator(validation_generator,
@@ -141,6 +148,16 @@ def prune_model(model, apoz_df, n_channels_delete):
                         channels=channels)
     # Delete channels
     return surgeon.operate()
+
+
+def get_total_channels(model):
+    start = None
+    end = None
+    channels = 0
+    for layer in model.layers[start:end]:
+        if layer.__class__.__name__ == 'Conv2D':
+            channels += layer.filters
+    return channels
 
 
 def get_model_apoz(model, generator):
