@@ -78,7 +78,7 @@ class Surgeon:
             node_indices(list[int]): (optional) A list of node indices used to
                                     selectively apply the job to a subset of
                                     the layer's nodes. Nodes are selected with:
-                                    node[i] = layer.inbound_nodes[node_indices[i]]
+                                    node[i] = layer._inbound_nodes[node_indices[i]]
         """
         # If the model has been copied, identify `layer` in the copied model.
         if self._copy:
@@ -128,7 +128,7 @@ class Surgeon:
         # Get nodes to be operated on for this job
         job_nodes = []
         for node_index in node_indices:
-            job_nodes.append(layer.inbound_nodes[node_index])
+            job_nodes.append(layer._inbound_nodes[node_index])
         # Check that the nodes do not already have jobs assigned to them.
         if set(job_nodes).intersection(self.nodes):
             raise ValueError('Cannot apply several jobs to the same node.')
@@ -157,7 +157,7 @@ class Surgeon:
             self._mod_func_map[node](node, outputs, output_masks, **kwargs)
 
         # Finish rebuilding model
-        output_nodes = [self.model.output_layers[i].inbound_nodes[node_index]
+        output_nodes = [self.model.output_layers[i]._inbound_nodes[node_index]
                         for i, node_index in
                         enumerate(self.model.output_layers_node_indices)]
         new_outputs, _ = self._rebuild_graph(self.model.inputs, output_nodes)

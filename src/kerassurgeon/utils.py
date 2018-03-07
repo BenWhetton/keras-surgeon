@@ -36,7 +36,7 @@ def get_node_depth(model, node):
     Raises:
         KeyError: if the node is not contained in the model.
     """
-    for (depth, nodes_at_depth) in model.nodes_by_depth.items():
+    for (depth, nodes_at_depth) in model._nodes_by_depth.items():
         if node in nodes_at_depth:
             return depth
     raise KeyError('The node is not contained in the model.')
@@ -46,14 +46,14 @@ def check_for_layer_reuse(model, layers=None):
     """Returns True if any layers are reused, False if not."""
     if layers is None:
         layers = model.layers
-    return any([len(l.inbound_nodes) > 1 for l in layers])
+    return any([len(l._inbound_nodes) > 1 for l in layers])
 
 
 def find_nodes_in_model(model, layer):
     """Find the indices of layer's inbound nodes which are in model"""
     model_nodes = get_model_nodes(model)
     node_indices = []
-    for i, node in enumerate(layer.inbound_nodes):
+    for i, node in enumerate(layer._inbound_nodes):
         if node in model_nodes:
             node_indices.append(i)
     return node_indices
@@ -71,26 +71,26 @@ def check_nodes_in_model(model, nodes):
 
 def get_model_nodes(model):
     """Return all nodes in the model"""
-    return [node for v in model.nodes_by_depth.values() for node in v]
+    return [node for v in model._nodes_by_depth.values() for node in v]
 
 
 def get_shallower_nodes(node):
-    possible_nodes = node.outbound_layer.outbound_nodes
+    possible_nodes = node.outbound_layer._outbound_nodes
     next_nodes = []
     for n in possible_nodes:
         for i, node_index in enumerate(n.node_indices):
-            if node == n.inbound_layers[i].inbound_nodes[node_index]:
+            if node == n.inbound_layers[i]._inbound_nodes[node_index]:
                 next_nodes.append(n)
     return next_nodes
 
 
 def get_inbound_nodes(node):
-    return [node.inbound_layers[i].inbound_nodes[node_index]
+    return [node.inbound_layers[i]._inbound_nodes[node_index]
             for i, node_index in enumerate(node.node_indices)]
 
 
 def get_node_index(node):
-    for i, n in enumerate(node.outbound_layer.inbound_nodes):
+    for i, n in enumerate(node.outbound_layer._inbound_nodes):
         if node == n:
             return i
 
@@ -104,7 +104,7 @@ def find_activation_layer(layer, node_index):
     """
     output_shape = layer.get_output_shape_at(node_index)
     maybe_layer = layer
-    node = maybe_layer.inbound_nodes[node_index]
+    node = maybe_layer._inbound_nodes[node_index]
     # Loop will be broken by an error if an output layer is encountered
     while True:
         # If maybe_layer has a nonlinear activation function return it and its index
@@ -112,7 +112,7 @@ def find_activation_layer(layer, node_index):
         if activation.__name__ != 'linear':
             if maybe_layer.get_output_shape_at(node_index) != output_shape:
                 ValueError('The activation layer ({0}), does not have the same'
-                           ' output shape as {1]'.format(maybe_layer.name,
+                           ' output shape as {1}'.format(maybe_layer.name,
                                                          layer.name))
             return maybe_layer, node_index
 

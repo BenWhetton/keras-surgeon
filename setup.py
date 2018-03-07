@@ -12,7 +12,7 @@ setup(
                 'Useful for deep neural network pruning.',
     author='Ben Whetton',
     author_email='Ben.Whetton@gmail.com',
-    install_requires=['keras'],
+    install_requires=['Keras==2.1.3'],
     extras_require={'pd': ['pandas'], },
     tests_require=['pytest'],
     packages=find_packages('src'),
