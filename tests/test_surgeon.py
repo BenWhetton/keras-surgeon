@@ -21,6 +21,7 @@ from numpy import random
 from kerassurgeon import operations
 from kerassurgeon import utils
 from kerassurgeon import Surgeon
+from kerassurgeon.utils import get_inbound_nodes, get_outbound_nodes
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
@@ -69,7 +70,7 @@ def model_2():
 
 
 def test_rebuild_submodel(model_2):
-    output_nodes = [model_2.output_layers[i].inbound_nodes[node_index]
+    output_nodes = [get_inbound_nodes(model_2.output_layers[i])[node_index]
                     for i, node_index in
                     enumerate(model_2.output_layers_node_indices)]
     surgeon = Surgeon(model_2)

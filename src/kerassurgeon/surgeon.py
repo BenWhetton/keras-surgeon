@@ -6,6 +6,7 @@ from keras.layers import BatchNormalization
 from keras.models import Model
 
 from kerassurgeon import utils
+from kerassurgeon.utils import get_inbound_nodes
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -128,7 +129,7 @@ class Surgeon:
         # Get nodes to be operated on for this job
         job_nodes = []
         for node_index in node_indices:
-            job_nodes.append(layer.inbound_nodes[node_index])
+            job_nodes.append(get_inbound_nodes(layer)[node_index])
         # Check that the nodes do not already have jobs assigned to them.
         if set(job_nodes).intersection(self.nodes):
             raise ValueError('Cannot apply several jobs to the same node.')
@@ -148,7 +149,7 @@ class Surgeon:
                               key=lambda x: utils.get_node_depth(self.model, x))
         for node in sorted_nodes:
             # Rebuild submodel up to this node
-            sub_output_nodes = utils.get_inbound_nodes(node)
+            sub_output_nodes = utils.get_node_inbound_nodes(node)
             outputs, output_masks = self._rebuild_graph(self.model.inputs,
                                                         sub_output_nodes)
 
@@ -157,7 +158,7 @@ class Surgeon:
             self._mod_func_map[node](node, outputs, output_masks, **kwargs)
 
         # Finish rebuilding model
-        output_nodes = [self.model.output_layers[i].inbound_nodes[node_index]
+        output_nodes = [get_inbound_nodes(self.model.output_layers[i])[node_index]
                         for i, node_index in
                         enumerate(self.model.output_layers_node_indices)]
         new_outputs, _ = self._rebuild_graph(self.model.inputs, output_nodes)
@@ -229,7 +230,7 @@ class Surgeon:
                 return node_output, output_mask
             # Otherwise recursively call this method on the inbound nodes.
             else:
-                inbound_nodes = utils.get_inbound_nodes(node)
+                inbound_nodes = utils.get_node_inbound_nodes(node)
                 logging.debug('inbound_layers: {0}'.format(
                     [node.outbound_layer.name for node in inbound_nodes]))
                 # Recursively rebuild the model up to `node`s inbound nodes to
@@ -368,7 +369,8 @@ class Surgeon:
 
         # If the layer is shared and has already been affected by this
         # operation, use the cached new layer.
-        if len(layer.inbound_nodes) > 1 and layer in self._replace_layers_map.keys():
+        if len(get_inbound_nodes(layer)) > 1 \
+                and layer in self._replace_layers_map.keys():
             return self._replace_layers_map[layer]
 
         output_shape = utils.single_element(node.output_shapes)
@@ -587,7 +589,7 @@ class Surgeon:
             raise ValueError('"{0}" layers are currently '
                              'unsupported.'.format(layer_class))
 
-        if len(layer.inbound_nodes) > 1 and new_layer != layer:
+        if len(get_inbound_nodes(layer)) > 1 and new_layer != layer:
             self._replace_layers_map[layer] = (new_layer, outbound_mask)
 
         return new_layer, outbound_mask
