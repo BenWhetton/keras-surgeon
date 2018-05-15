@@ -53,11 +53,6 @@ literature. I could not find an easy way to prune neurons from Keras models.
 
 I hope I have created something which will be useful to others.
 
-I am reasonably new to python and this is my first attempt at releasing a
-small package to get to grips with the process(documentation, packaging etc.).\
-Any feedback on best practices that I may be unaware of would be most welcome.
-
-
 ## Installation
 ```
 pip install kerassurgeon
@@ -113,8 +108,6 @@ without re-building the whole network.
 This package has not yet been optimised for performance. It can certainly be improved.
 
 ### Tests:
-Investigate why tests are much slower when they are all run than when they are 
-run individually.\
 Write unit tests for the utility functions.\
 This package pretty tightly coupled with Keras which makes unit testing difficult.
 Some component tests have been written but it needs more work.
@@ -122,12 +115,6 @@ Some component tests have been written but it needs more work.
 ### Examples
 Write better examples.
 
-
-## Known major bugs:
-When using `delete_channels`, shared layers stop being shared if their weights 
-are modified as a result of another layer’s channels being deleted. E.g. if a 
-shared layer is the next weighted layer downstream from a pruned layer, the 
-sharing will be broken.
 
 [Hu et al. (2016)]: http://arxiv.org/abs/1607.03250
 [Keras]: https://github.com/fchollet/keras

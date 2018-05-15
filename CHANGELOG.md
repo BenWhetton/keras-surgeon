@@ -1,0 +1,34 @@
+# Changelog
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
+and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+## [0.1.0] - 2018-05-15
+### Added
+- Deleting all neurons in a layer now removes the whole branch.
+  If there is only one branch, this will cause an error to be raised.
+- Enabled resuming pruning from the last checkpoint in `inception_flowers_prune`
+  example. This is now the default behaviour.
+- Added a changelog!
+
+### Changed
+- Updated to work with Keras >= 2.1.3.
+- Massively reduced test time.
+- Updated tox.ini to test many combinations of keras and tensorflow versions.
+
+### Deprecated
+- Support for Keras < 2.1.3 will be removed in a future release.
+
+### Fixed
+- Shared layers are no longer broken when `delete_channels` is applied to
+  upstream layers·
+- Added memory cleanup to `inception_flowers_prune` example; prevents memory leak.
+
+
+
+
+[Unreleased]: https://github.com/BenWhetton/keras-surgeon/compare/0.1.0...HEAD
+[0.1.0]: https://github.com/olivierlacan/keep-a-changelog/compare/0.0.1...0.1.0
