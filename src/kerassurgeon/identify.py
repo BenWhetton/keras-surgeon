@@ -53,7 +53,7 @@ def get_apoz(model, layer, x_val, node_indices=None):
 
     data_format = getattr(layer, 'data_format', 'channels_last')
     # Perform the forward pass and get the activations of the layer.
-    activations = []
+    total_apoz = None
     for node_index in node_indices:
         act_layer, act_index = utils.find_activation_layer(layer, node_index)
         # Get activations
@@ -70,11 +70,14 @@ def get_apoz(model, layer, x_val, node_indices=None):
         if data_format == 'channels_first':
             a = np.swapaxes(a, 1, -1)
         # Flatten all except channels axis and add to list
-        activations.append(np.reshape(a, [-1, a.shape[-1]]))
-    # Concatenate all activations from this layers nodes and calculate the
-    # average percentage of zeros for each channel.
-    activations = np.concatenate(activations, axis=0)
-    return (activations == 0).astype(int).sum(axis=0) / activations.shape[0]
+        activations = np.reshape(a, [-1, a.shape[-1]])
+        apoz = (activations == 0).astype(int).sum(axis=0) / activations.shape[0]
+
+        if total_apoz is None:
+            total_apoz = apoz
+        else:
+            total_apoz += apoz
+    return total_apoz
 
 
 def high_apoz(apoz, method="std", cutoff_std=1, cutoff_absolute=0.99):

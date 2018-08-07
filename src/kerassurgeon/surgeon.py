@@ -158,9 +158,10 @@ class Surgeon:
             self._mod_func_map[node](node, outputs, output_masks, **kwargs)
 
         # Finish rebuilding model
-        output_nodes = [get_inbound_nodes(self.model.output_layers[i])[node_index]
-                        for i, node_index in
-                        enumerate(self.model.output_layers_node_indices)]
+        output_nodes = []
+        for output in self.model.outputs:
+            layer, node_index, tensor_index = output._keras_history
+            output_nodes.append(get_inbound_nodes(layer)[node_index])
         new_outputs, _ = self._rebuild_graph(self.model.inputs, output_nodes)
         new_model = Model(self.model.inputs, new_outputs)
 
@@ -407,7 +408,7 @@ class Surgeon:
                 k_size = layer.kernel_size
                 index = [slice(None, dim_size, None) for dim_size in
                          k_size]
-                inbound_masks = inbound_masks[index + [slice(None)]]
+                inbound_masks = inbound_masks[tuple(index + [slice(None)])]
                 # Delete unused weights to obtain new_weights
                 weights = layer.get_weights()
                 # Each deleted channel was connected to all of the channels
@@ -439,7 +440,7 @@ class Surgeon:
                 index[-1] = slice(None)
             else:
                 raise ValueError('Invalid data format')
-            outbound_mask = inbound_masks[index]
+            outbound_mask = inbound_masks[tuple(index)]
             new_layer = layer
 
         elif layer_class in ('UpSampling1D',
@@ -461,7 +462,7 @@ class Surgeon:
                 tile_shape[-1] = 1
             else:
                 raise ValueError('Invalid data format')
-            channels_vector = inbound_masks[index]
+            channels_vector = inbound_masks[tuple(index)]
             # Tile this slice to create the outbound mask
             outbound_mask = np.tile(channels_vector, tile_shape)
             new_layer = layer
@@ -479,7 +480,7 @@ class Surgeon:
                 index[-1] = slice(None)
             else:
                 raise ValueError('Invalid data format')
-            channels_vector = inbound_masks[index]
+            channels_vector = inbound_masks[tuple(index)]
             # Tile this slice to create the outbound mask
             outbound_mask = channels_vector
             new_layer = layer
@@ -564,7 +565,7 @@ class Surgeon:
             index[layer.axis] = slice(None)
             index = index[1:]
             # TODO: Maybe use channel indices everywhere instead of masks?
-            channel_indices = np.where(inbound_masks[index] == False)[0]
+            channel_indices = np.where(inbound_masks[tuple(index)] == False)[0]
             weights = [np.delete(w, channel_indices, axis=-1)
                        for w in layer.get_weights()]
             new_layer = BatchNormalization.from_config(

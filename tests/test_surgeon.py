@@ -70,9 +70,10 @@ def model_2():
 
 
 def test_rebuild_submodel(model_2):
-    output_nodes = [get_inbound_nodes(model_2.output_layers[i])[node_index]
-                    for i, node_index in
-                    enumerate(model_2.output_layers_node_indices)]
+    output_nodes = []
+    for output in model_2.outputs:
+        layer, node_index, tensor_index = output._keras_history
+        output_nodes.append(get_inbound_nodes(layer)[node_index])
     surgeon = Surgeon(model_2)
     outputs, _ = surgeon._rebuild_graph(model_2.inputs, output_nodes)
     new_model = Model(model_2.inputs, outputs)

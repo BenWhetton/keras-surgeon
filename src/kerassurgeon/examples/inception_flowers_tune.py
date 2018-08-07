@@ -63,7 +63,7 @@ def save_bottleneck_features():
                                             class_mode='sparse',
                                             shuffle=False)
     features = model.predict_generator(generator, nb_train_samples // batch_size)
-    labels = np.eye(generator.num_class, dtype='uint8')[generator.classes]
+    labels = np.eye(generator.num_classes, dtype='uint8')[generator.classes]
     labels = labels[0:(nb_train_samples // batch_size) * batch_size]
     np.save(open(output_dir+'bottleneck_features_train.npy', 'wb'), features)
     np.save(open(output_dir+'bottleneck_labels_train.npy', 'wb'), labels)
@@ -75,7 +75,7 @@ def save_bottleneck_features():
                                             class_mode=None,
                                             shuffle=False)
     features = model.predict_generator(generator, nb_validation_samples // batch_size)
-    labels = np.eye(generator.num_class, dtype='uint8')[generator.classes]
+    labels = np.eye(generator.num_classes, dtype='uint8')[generator.classes]
     labels = labels[0:(nb_validation_samples // batch_size) * batch_size]
     np.save(open(output_dir+'bottleneck_features_validation.npy', 'wb'), features)
     np.save(open(output_dir+'bottleneck_labels_validation.npy', 'wb'), labels)

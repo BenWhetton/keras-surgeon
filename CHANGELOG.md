@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.1.1] - 2018-08-07
+### Fixed
+- Updated to work with keras >= 2.2.0
+- No longer triggers numpy FutureWarning: "Using a non-tuple sequence
+  for multidimensional indexing is deprecated".
+- Updated flowers example to work with latest keras and tensorflow. It
+  probably won't work with old versions now.
+
 ## [0.1.0] - 2018-05-15
 ### Added
 - Deleting all neurons in a layer now removes the whole branch.
