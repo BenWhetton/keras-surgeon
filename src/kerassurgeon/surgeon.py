@@ -427,6 +427,31 @@ class Surgeon:
                 config['weights'] = weights
                 new_layer = type(layer).from_config(config)
             outbound_mask = None
+        
+        elif layer_class in ('SeparableConv2D'):
+            if np.all(inbound_masks):
+                new_layer = layer
+            else:
+                if data_format == 'channels_first':
+                    inbound_masks = np.swapaxes(inbound_masks, 0, -1)
+
+                # Conv layer: trim down inbound_masks to filter shape
+                k_size = layer.kernel_size
+                index = [slice(None, dim_size, None) for dim_size in k_size]
+                delete_mask = inbound_masks[tuple(index + [slice(None)])]
+                # Delete unused weights to obtain new_weights
+                weights = layer.get_weights()
+               
+                new_shape = list(weights[0].shape)
+                new_shape[-2] = -1  # Weights always have channels_last
+                weights[0] = np.reshape(weights[0][delete_mask], new_shape)
+                weights[1] = weights[1][:,:,delete_mask[0][0],:]
+                
+                # Instantiate new layer with new_weights
+                config = layer.get_config()
+                config['weights'] = weights
+                new_layer = type(layer).from_config(config)
+            outbound_mask = None
 
         elif layer_class in ('Cropping1D', 'Cropping2D', 'Cropping3D',
                              'MaxPooling1D', 'MaxPooling2D',
@@ -642,6 +667,10 @@ class Surgeon:
             weights = [np.delete(w, channel_indices_lstm, axis=-1)
                        for w in layer.get_weights()]
             weights[1] = np.delete(weights[1], channel_indices, axis=0)
+        elif layer.__class__.__name__ == 'SeparableConv2D':
+            weights = layer.get_weights() 
+            for i in range(1,len(weights)):
+                weights[i] = np.delete(weights[i], channel_indices, axis=-1)
         else:
             weights = [np.delete(w, channel_indices, axis=-1)
                        for w in layer.get_weights()]
