@@ -15,7 +15,11 @@ def clean_copy(model):
 
 def get_channels_attr(layer):
     layer_config = layer.get_config()
-    if 'units' in layer_config.keys():
+    # michael santacroce
+    if layer.__class__.__name__ == "TimeDistributed":
+        # layer = layer.layer
+        channels_attr = "filters"
+    elif 'units' in layer_config.keys():
         channels_attr = 'units'
     elif 'filters' in layer_config.keys():
         channels_attr = 'filters'
@@ -133,6 +137,7 @@ def find_activation_layer(layer, node_index):
         layer(Layer):
         node_index:
     """
+    
     output_shape = layer.get_output_shape_at(node_index)
     maybe_layer = layer
     node = get_inbound_nodes(maybe_layer)[node_index]
