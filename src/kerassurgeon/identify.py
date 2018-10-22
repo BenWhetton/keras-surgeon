@@ -1,7 +1,6 @@
 """Identify which channels to delete."""
 import numpy as np
 from keras import backend as k
-from keras.preprocessing.image import Iterator
 from keras.models import Model
 
 from kerassurgeon import utils
@@ -53,31 +52,29 @@ def get_apoz(model, layer, x_val, node_indices=None):
 
     data_format = getattr(layer, 'data_format', 'channels_last')
     # Perform the forward pass and get the activations of the layer.
-    total_apoz = None
+    mean_calculator = utils.MeanCalculator(sum_axis=0)
     for node_index in node_indices:
         act_layer, act_index = utils.find_activation_layer(layer, node_index)
         # Get activations
-        if isinstance(x_val, Iterator):
-            temp_model = Model(model.inputs, act_layer.get_output_at(act_index))
+        if hasattr(x_val, "__iter__"):
+            temp_model = Model(model.inputs,
+                               act_layer.get_output_at(act_index))
             a = temp_model.predict_generator(
-                    x_val, x_val.n // x_val.batch_size)
+                x_val, x_val.n // x_val.batch_size)
         else:
             get_activations = k.function(
                 [utils.single_element(model.inputs), k.learning_phase()],
                 [act_layer.get_output_at(act_index)])
             a = get_activations([x_val, 0])[0]
-        # Ensure that the channels axis is last
+            # Ensure that the channels axis is last
         if data_format == 'channels_first':
             a = np.swapaxes(a, 1, -1)
-        # Flatten all except channels axis and add to list
+        # Flatten all except channels axis
         activations = np.reshape(a, [-1, a.shape[-1]])
-        apoz = (activations == 0).astype(int).sum(axis=0) / activations.shape[0]
+        zeros = (activations == 0).astype(int)
+        mean_calculator.add(zeros)
 
-        if total_apoz is None:
-            total_apoz = apoz
-        else:
-            total_apoz += apoz
-    return total_apoz
+    return mean_calculator.calculate()
 
 
 def high_apoz(apoz, method="std", cutoff_std=1, cutoff_absolute=0.99):

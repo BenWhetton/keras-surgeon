@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.1.3] - 2018-10-22
+### Fixed
+- `identify.get_apoz` fails to identify all generators and resulted
+  high memory usage (possibly an infinite loop) when calculating layer
+  outputs
+- `identify.get_apoz` calculates incorrect apoz when layers are re-used
+
 ## [0.1.2] - 2018-10-04
 ### Fixed
 - Bug when pruning Conv layers with smaller input than filter shape

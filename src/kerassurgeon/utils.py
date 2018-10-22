@@ -189,3 +189,20 @@ def all_equal(iterator):
             np.array_equal(first, rest) for rest in iterator)
     except StopIteration:
         return True
+
+
+class MeanCalculator:
+    def __init__(self, sum_axis):
+        self.values = None
+        self.n = 0
+        self.sum_axis = sum_axis
+
+    def add(self, v):
+        if self.values is None:
+            self.values = v.sum(axis=self.sum_axis)
+        else:
+            self.values += v.sum(axis=self.sum_axis)
+        self.n += v.shape[self.sum_axis]
+
+    def calculate(self):
+        return self.values / self.n
