@@ -6,7 +6,7 @@ from keras.models import Model
 from kerassurgeon import utils
 
 
-def get_apoz(model, layer, x_val, node_indices=None):
+def get_apoz(model, layer, x_val, node_indices=None, batch_size=1):
     """Identify neurons with high Average Percentage of Zeros (APoZ).
 
     The APoZ a.k.a. (A)verage (P)ercentage (o)f activations equal to (Z)ero,
@@ -56,11 +56,16 @@ def get_apoz(model, layer, x_val, node_indices=None):
     for node_index in node_indices:
         act_layer, act_index = utils.find_activation_layer(layer, node_index)
         # Get activations
-        if hasattr(x_val, "__iter__"):
+        if isinstance(x_val, np.ndarray):
             temp_model = Model(model.inputs,
                                act_layer.get_output_at(act_index))
             a = temp_model.predict_generator(
-                x_val, x_val.n // x_val.batch_size)
+                x_val, x_val.shape[0] // batch_size)
+        elif hasattr(x_val, "__iter__"):
+            temp_model = Model(model.inputs,
+                               act_layer.get_output_at(act_index))
+            a = temp_model.predict_generator(
+                x_val, x_val.n // batch_size)
         else:
             get_activations = k.function(
                 [utils.single_element(model.inputs), k.learning_phase()],
