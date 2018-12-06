@@ -241,20 +241,15 @@ class Surgeon:
                 inputs, input_masks = zip(
                     *[_rebuild_rec(n) for n in inbound_nodes])
                 
-                # michael santacroce - what does this do again...
                 if all(i is None for i in inputs):
-                    shape = node.output_shapes[0][1:]
-                    shape = [ x for x in shape]
-                    output_mask = np.asarray(shape, dtype=bool)
-                    
-                    output = None
-                    
                     if layer.__class__.__name__ == "TimeDistributed":
                         new_layer, output_mask = self._apply_delete_mask(node, input_masks, timeDistributedLayer=True)
-                        
                         output = new_layer(utils.single_element(list(inputs)))
+                        
                     else:
-                        print("Encountered layer with no inputs:", layer.__class__.__name__)
+                        output = None
+                        output_mask = np.zeros(node.output_shapes[0][1:], dtype=bool)
+                        
                 elif any(i is None for i in inputs):
                     if node.outbound_layer.__class__.__name__ != 'Concatenate':
                         TypeError('Inputs can only be missing for concatenate layers.')
