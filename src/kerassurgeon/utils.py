@@ -15,10 +15,10 @@ def clean_copy(model):
 
 def get_channels_attr(layer):
     layer_config = layer.get_config()
-    # michael santacroce
+    # michael santacroce - check this
     if layer.__class__.__name__ == "TimeDistributed":
-        # layer = layer.layer
-        channels_attr = "filters"
+        # channels_attr = "filters"
+        channels_attr = get_channels_attr(layer.layer)
     elif 'units' in layer_config.keys():
         channels_attr = 'units'
     elif 'filters' in layer_config.keys():

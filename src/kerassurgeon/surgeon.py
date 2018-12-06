@@ -4,6 +4,7 @@ import numpy as np
 from keras.engine.topology import Node
 from keras.layers import BatchNormalization
 from keras.models import Model
+from keras.layers import *
 
 from kerassurgeon import utils
 from kerassurgeon.utils import get_inbound_nodes
@@ -163,10 +164,7 @@ class Surgeon:
         for output in self.model.outputs:
             layer, node_index, tensor_index = output._keras_history
             output_nodes.append(get_inbound_nodes(layer)[node_index])
-        print("STARTING HERE")
-        print()
-        print()
-        print()
+        
         new_outputs, _ = self._rebuild_graph(self.model.inputs, output_nodes)
         new_model = Model(self.model.inputs, new_outputs)
         
@@ -212,11 +210,10 @@ class Surgeon:
                 The output mask of the rebuilt `node`
 
             """
-            # TODO: What happens if nodes have multiple output tensors?
-            # Does that ever happen?
             layer = node.outbound_layer
             logging.debug('getting inputs for: {0}'.format(layer.name))
             node_output = utils.single_element(node.output_tensors)
+            
             # First check for conditions to bottom out the recursion
             # Check for replaced tensors before any other checks:
             # these are created by the surgery methods.
@@ -244,32 +241,24 @@ class Surgeon:
                 inputs, input_masks = zip(
                     *[_rebuild_rec(n) for n in inbound_nodes])
                 
-                # if inputs == (None,):
-                    # print(layer.name)
-                    # print( 0/0)
-
+                # michael santacroce - what does this do again...
                 if all(i is None for i in inputs):
-                    # michael santacroce
-                    # print("noshape", layer)
                     shape = node.output_shapes[0][1:]
                     shape = [ x for x in shape]
                     output_mask = np.asarray(shape, dtype=bool)
                     
-                    output = None
-                    # output_mask = np.zeros(node.output_shapes[0][1:], dtype=bool)
+                    output = None=
                     
                     if layer.__class__.__name__ == "TimeDistributed":
-                        new_layer, output_mask = self._apply_delete_mask(node, input_masks)
+                        new_layer, output_mask = self._apply_delete_mask(node, input_masks, timeDistributedLayer=True)
                         
-                        # print(layer.name, inputs, new_layer, new_layer.name)
                         output = new_layer(utils.single_element(list(inputs)))
-                        # print(inputs)
-                        # print( 0/0)
                     else:
-                        print("none inputs", layer.__class__.__name__)
+                        print("Encountered layer with no inputs:", layer.__class__.__name__)
                 elif any(i is None for i in inputs):
                     if node.outbound_layer.__class__.__name__ != 'Concatenate':
                         TypeError('Inputs can only be missing for concatenate layers.')
+                        
                     # remove Nones from inputs list
                     inputs = [i for i in inputs if i is not None]
                     new_layer, output_mask = self._apply_delete_mask(node, input_masks)
@@ -281,7 +270,6 @@ class Surgeon:
                     new_layer, output_mask = self._apply_delete_mask(node, input_masks)
                     output = new_layer(utils.single_element(list(inputs)))
                 
-                
                 # Record that this node has been rebuild
                 self._finished_nodes[node] = (output, output_mask)
                 logging.debug('layer complete: {0}'.format(layer.name))
@@ -291,8 +279,7 @@ class Surgeon:
         # Call the recursive _rebuild_rec method to rebuild the submodel up to
         # each output layer
         outputs, output_masks = zip(*[_rebuild_rec(n) for n in output_nodes])
-        # print("output", outputs)
-        # print(0/0)
+        
         return outputs, output_masks
 
     def _delete_layer(self, node, inputs, input_masks):
@@ -337,7 +324,6 @@ class Surgeon:
         # Create a mask to propagate the deleted channels to downstream layers
         new_delete_mask = self._make_delete_mask(old_layer, channels)
         
-        # michael santacroce
         check_layer = old_layer.layer if old_layer.__class__.__name__ == "TimeDistributed" else old_layer
         if len(set(channels)) == getattr(check_layer, utils.get_channels_attr(old_layer)):
             self._replace_tensors[old_layer_output] = (None, new_delete_mask)
@@ -356,7 +342,6 @@ class Surgeon:
             if layer_name:
                 new_layer.name = layer_name
             self._new_layers_map[old_layer] = new_layer
-        # print("ASDFASDFADSF", utils.single_element(inputs))
         new_output = new_layer(utils.single_element(inputs))
         # Replace the original layer's output with the modified layer's output
         self._replace_tensors[old_layer_output] = (new_output, new_delete_mask)
@@ -409,7 +394,7 @@ class Surgeon:
 
         output_shape = utils.single_element(node.output_shapes)
         input_shape = utils.single_element(node.input_shapes)
-        #michael santacroce
+        
         if timeDistributedLayer:
             output_shape = output_shape[1:]
             input_shape = input_shape[1:]
@@ -618,18 +603,10 @@ class Surgeon:
         elif layer_class == "TimeDistributed":
             
             sublayer, outbound_mask = self._apply_delete_mask(node, inbound_masks, layer=layer.layer, timeDistributedLayer=True)
-            # print(dir(node))
-            config = sublayer.get_config()
-            # print(config)
-            # print(sublayer.input_spec)
-            # print(sublayer.input_shape)
-            # new_layer = type(layer)(type(sublayer).from_config(config))
-            # print("NAME", layer.name)
-            new_layer = type(layer)(sublayer, name=layer.name)
             
-            # config = layer.layer.get_config()
-            # new_layer = type(layer)(type(layer.layer).from_config(config))
-            # outbound_mask = None
+            config = sublayer.get_config()
+            
+            new_layer = type(layer)(sublayer, name=layer.name)
             
         
         else:
@@ -639,15 +616,19 @@ class Surgeon:
             # - Conv2DTranspose
             # - LocallyConnected1D
             # - LocallyConnected2D
-            # - TimeDistributed
             # - Bidirectional
             # - Dot
             # - PReLU
             # Warning/error needed for Reshape if channels axis is split
+            
+            print("UNSUPPORTED LAYER", layer)
+            print("Returning default layer")
+            
+            return layer, inbound_masks[1:]
+            
             raise ValueError('"{0}" layers are currently '
                              'unsupported.'.format(layer_class))
         
-        # michael santacroce add if not stmt
         if not timeDistributedLayer:
             if len(get_inbound_nodes(layer)) > 1 and new_layer != layer:
                 self._replace_layers_map[layer] = (new_layer, outbound_mask)
@@ -665,19 +646,20 @@ class Surgeon:
             A new layer with the channels and corresponding weights deleted.
         """
         layer_config = layer.get_config()
-        # michael santacroce
+        
         if layer.__class__.__name__ == "TimeDistributed":
-            old_layer_name = layer_config["name"]
+            timedist_layer_name = layer_config["name"]
             layer_config = layer.layer.get_config()
         
         channels_attr = utils.get_channels_attr(layer)
         channel_count = layer_config[channels_attr]
+        
         # Check inputs
-        # michael santacroce
-        # if any([i + 1 > channel_count for i in channel_indices]):
-            # raise ValueError('Channels_index value(s) out of range. '
-                             # 'This layer only has {0} channels.'
-                             # .format(channel_count))
+        # michael santacroce - the next if statement was commented out?
+        if any([i + 1 > channel_count for i in channel_indices]):
+            raise ValueError('Channels_index value(s) out of range. '
+                             'This layer only has {0} channels.'
+                             .format(channel_count))
         print('Deleting {0}/{1} channels from layer: {2}'.format(
             len(channel_indices), channel_count, layer.name))
         # numpy.delete ignores negative indices in lists: wrap indices
@@ -713,17 +695,12 @@ class Surgeon:
         layer_config['weights'] = weights
 
         # Create new layer from the modified configuration and return it.
-        # michael santacroce
         if layer.__class__.__name__ == "TimeDistributed":
-            # print("made new layer")
-            # print(layer.name)
-            
             # make sure to keep old layer name, will mess up otherwise
             new_layer =  type(layer)(type(layer.layer).from_config(layer_config))
-            new_layer.name = old_layer_name
+            new_layer.name = timedist_layer_name
             return new_layer
         else:
-            # print("whaaaat?")
             return type(layer).from_config(layer_config)
 
     def _make_delete_mask(self, layer, channel_indices):
@@ -747,16 +724,9 @@ class Surgeon:
             
         data_format = getattr(layer, 'data_format', 'channels_last')
         shape = layer.output_shape[1:]
-        # michael santacroce
+        
+        # michael santacroce - does this still pass tests?
         shape = [1 if x==None else x for x in shape]
-        # print(shape)
-        # print(data_format)
-        # print(0/0)
-        # if layer.__class__.__name__ == "TimeDistributed":
-            # print("found TD")
-            # shape = layer.output_shape[2:]
-            # channel_indices = np.arange(0,50)
-            # print(channel_indices)
             
         new_delete_mask = np.ones(shape, dtype=bool)
         if data_format == 'channels_first':
