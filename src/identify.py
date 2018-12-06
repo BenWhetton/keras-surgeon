@@ -2,11 +2,12 @@
 import numpy as np
 from keras import backend as k
 from keras.models import Model
+import types
 
 from kerassurgeon import utils
 
 
-def get_apoz(model, layer, x_val, node_indices=None, x_steps=None):
+def get_apoz(model, layer, x_val, node_indices=None, steps=None):
     """Identify neurons with high Average Percentage of Zeros (APoZ).
 
     The APoZ a.k.a. (A)verage (P)ercentage (o)f activations equal to (Z)ero,
@@ -36,6 +37,7 @@ def get_apoz(model, layer, x_val, node_indices=None, x_steps=None):
     # Check that layer is in the model
     if layer not in model.layers:
         raise ValueError('layer is not a valid Layer in model.')
+    
 
     layer_node_indices = utils.find_nodes_in_model(model, layer)
     # If no nodes are specified, all of the layer's inbound nodes which are
@@ -57,12 +59,13 @@ def get_apoz(model, layer, x_val, node_indices=None, x_steps=None):
         act_layer, act_index = utils.find_activation_layer(layer, node_index)
         # Get activations
         if hasattr(x_val, "__iter__"):
-            if not x_steps:
-                raise ValueError('x_steps must be specified for a generator.')
-            temp_model = Model(model.inputs,
-                               act_layer.get_output_at(act_index))
-            a = temp_model.predict_generator(
-                x_val, x_steps)
+            # michael santacroce
+            # temp_model = Model(model.inputs, act_layer.get_output_at(act_index))
+            temp_model = Model(model.inputs, layer.get_output_at(node_index))
+            a = temp_model.predict_generator_intermediate(
+                    x_val, 
+                    steps=steps)
+            
         else:
             get_activations = k.function(
                 [utils.single_element(model.inputs), k.learning_phase()],
@@ -78,7 +81,94 @@ def get_apoz(model, layer, x_val, node_indices=None, x_steps=None):
 
     return mean_calculator.calculate()
 
+    
+def get_lowest_mag_kernels(convLayer):
+    # this needs to be a convolutional layer!
+    layerName = convLayer.__class__.__name__
+    
+    if layerName == "TimeDistributed":
+        convLayer = convLayer.layer
+    elif "Conv" not in layerName:
+        print("Only use on convolutional layers")
+        return False
+    
+    kernels = convLayer.get_weights()[0]
+    # print(kernels)
+    # print(kernels.shape)
+    
+    kernels = np.abs(kernels)
+    total = np.sum(kernels, axis=2)
+    total = np.sum(total, axis=1)
+    total = np.sum(total, axis=0)
+    # print(total.shape)
+    return total
+    
+    
+def get_sum(model, layer, x_val, node_indices=None, steps=None):
 
+    if isinstance(layer, str):
+        layer = model.get_layer(name=layer)
+
+    # Check that layer is in the model
+    if layer not in model.layers:
+        raise ValueError('layer is not a valid Layer in model.')
+    
+
+    layer_node_indices = utils.find_nodes_in_model(model, layer)
+    # If no nodes are specified, all of the layer's inbound nodes which are
+    # in model are selected.
+    if not node_indices:
+        node_indices = layer_node_indices
+    # Check for duplicate node indices
+    elif len(node_indices) != len(set(node_indices)):
+        raise ValueError('`node_indices` contains duplicate values.')
+    # Check that all of the selected nodes are in the layer
+    elif not set(node_indices).issubset(layer_node_indices):
+        raise ValueError('One or more nodes specified by `layer` and '
+                         '`node_indices` are not in `model`.')
+
+    data_format = getattr(layer, 'data_format', 'channels_last')
+    # Perform the forward pass and get the activations of the layer.
+    total_sum = None
+    for node_index in node_indices:
+        act_layer, act_index = utils.find_activation_layer(layer, node_index)
+        # Get activations
+        if isinstance(x_val,  types.GeneratorType):
+            # michael santacroce
+            # temp_model = Model(model.inputs, act_layer.get_output_at(act_index))
+            temp_model = Model(model.inputs, layer.get_output_at(node_index))
+            a = temp_model.predict_generator_intermediate(
+                    x_val, 
+                    steps=steps)
+            
+        else:
+            get_activations = k.function(
+                [utils.single_element(model.inputs), k.learning_phase()],
+                [act_layer.get_output_at(act_index)])
+            a = get_activations([x_val, 0])[0]
+            
+        # Ensure that the channels axis is last
+        if data_format == 'channels_first':
+            a = np.swapaxes(a, 1, -1)
+        
+        a = np.abs(a)
+        ave = np.sum(a, axis=2)
+        ave = np.sum(ave, axis=1)
+        sum = np.sum(ave, axis=0)
+        
+        if total_sum is None:
+            total_sum = sum
+        else:
+            total_sum += sum
+            
+    return total_sum
+
+def lowest_sum(sum, cnt):
+    # returns lowest 3 node sums 
+    
+    return sum.argsort()[:cnt]
+    
+    
 def high_apoz(apoz, method="std", cutoff_std=1, cutoff_absolute=0.99):
     """
     Args:
@@ -103,5 +193,5 @@ def high_apoz(apoz, method="std", cutoff_std=1, cutoff_absolute=0.99):
         cutoff = cutoff_absolute
     else:
         cutoff = min([cutoff_absolute, apoz.mean() + apoz.std()*cutoff_std])
-
+    
     return np.where(apoz >= cutoff)[0]
