@@ -58,7 +58,7 @@ def get_apoz(model, layer, x_val, node_indices=None, steps=None):
     for node_index in node_indices:
         act_layer, act_index = utils.find_activation_layer(layer, node_index)
         # Get activations
-        if isinstance(x_val,  types.GeneratorType):
+        if hasattr(x_val, "__iter__"):
             # michael santacroce
             # temp_model = Model(model.inputs, act_layer.get_output_at(act_index))
             temp_model = Model(model.inputs, layer.get_output_at(node_index))
@@ -151,8 +151,6 @@ def get_sum(model, layer, x_val, node_indices=None, steps=None):
         if data_format == 'channels_first':
             a = np.swapaxes(a, 1, -1)
         
-        # ave = np.mean(a, axis=2)
-        # ave = np.mean(ave, axis=1)
         a = np.abs(a)
         ave = np.sum(a, axis=2)
         ave = np.sum(ave, axis=1)
@@ -165,11 +163,8 @@ def get_sum(model, layer, x_val, node_indices=None, steps=None):
             
     return total_sum
 
-# michael santacroce
 def lowest_sum(sum, cnt):
-    print("lowest 3 nodes")
-    print(sum.argsort()[:cnt])
-    # print(0/0)
+    # returns lowest 3 node sums 
     
     return sum.argsort()[:cnt]
     

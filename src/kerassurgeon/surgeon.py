@@ -595,7 +595,6 @@ class Surgeon:
             new_layer.build(new_input_shape)
             new_layer.set_weights(weights)
             
-        # michael santacroce
         elif layer_class == "TimeDistributed":
             
             sublayer, outbound_mask = self._apply_delete_mask(node, inbound_masks, layer=layer.layer, timeDistributedLayer=True)
@@ -651,7 +650,6 @@ class Surgeon:
         channel_count = layer_config[channels_attr]
         
         # Check inputs
-        # michael santacroce - the next if statement was commented out?
         if any([i + 1 > channel_count for i in channel_indices]):
             raise ValueError('Channels_index value(s) out of range. '
                              'This layer only has {0} channels.'
@@ -721,7 +719,6 @@ class Surgeon:
         data_format = getattr(layer, 'data_format', 'channels_last')
         shape = layer.output_shape[1:]
         
-        # michael santacroce - does this still pass tests?
         shape = [1 if x==None else x for x in shape]
             
         new_delete_mask = np.ones(shape, dtype=bool)
