@@ -6,7 +6,7 @@ from setuptools import find_packages
 
 setup(
     name='kerassurgeon',
-    version="0.1.1",
+    version="0.1.3",
     url='https://github.com/BenWhetton/keras-surgeon',
     license='MIT',
     description='A library for performing network surgery on trained Keras '

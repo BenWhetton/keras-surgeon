@@ -429,19 +429,15 @@ class Surgeon:
                     inbound_masks = np.swapaxes(inbound_masks, 0, -1)
                 # Conv layer: trim down inbound_masks to filter shape
                 k_size = layer.kernel_size
-                index = [slice(None, dim_size, None) for dim_size in
-                         k_size]
+                index = [slice(None, 1, None) for _ in k_size]
                 inbound_masks = inbound_masks[tuple(index + [slice(None)])]
-                # Delete unused weights to obtain new_weights
                 weights = layer.get_weights()
+                # Delete unused weights to obtain new_weights
                 # Each deleted channel was connected to all of the channels
                 # in layer; therefore, the mask must be repeated for each
                 # channel.
-                # `delete_mask`'s size: size(inbound_mask)+[layer.filters]
-                # TODO: replace repeat with tile
-                delete_mask = np.repeat(inbound_masks[..., np.newaxis],
-                                        weights[0].shape[-1],
-                                        axis=-1)
+                # `delete_mask`'s size: size(weights[0])
+                delete_mask = np.tile(inbound_masks[..., np.newaxis], list(k_size) + [1, weights[0].shape[-1]])
                 new_shape = list(weights[0].shape)
                 new_shape[-2] = -1  # Weights always have channels_last
                 weights[0] = np.reshape(weights[0][delete_mask], new_shape)
