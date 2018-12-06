@@ -247,7 +247,7 @@ class Surgeon:
                     shape = [ x for x in shape]
                     output_mask = np.asarray(shape, dtype=bool)
                     
-                    output = None=
+                    output = None
                     
                     if layer.__class__.__name__ == "TimeDistributed":
                         new_layer, output_mask = self._apply_delete_mask(node, input_masks, timeDistributedLayer=True)
