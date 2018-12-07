@@ -59,8 +59,7 @@ def get_apoz(model, layer, x_val, node_indices=None):
         if hasattr(x_val, "__iter__"):
             temp_model = Model(model.inputs,
                                act_layer.get_output_at(act_index))
-            a = temp_model.predict_generator(
-                x_val, x_val.n // x_val.batch_size)
+            a = temp_model.predict(x_val)
         else:
             get_activations = k.function(
                 [utils.single_element(model.inputs), k.learning_phase()],
