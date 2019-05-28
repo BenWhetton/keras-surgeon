@@ -5,14 +5,14 @@ from setuptools import find_packages
 
 
 setup(
-    name='kerassurgeon',
-    version="0.1.3",
-    url='https://github.com/BenWhetton/keras-surgeon',
+    name='tfkerassurgeon',
+    version="0.2.0",
+    url='https://github.com/Raukk/tf-keras-surgeon',
     license='MIT',
-    description='A library for performing network surgery on trained Keras '
+    description='A library for performing network surgery on trained tf.Keras '
                 'models. Useful for deep neural network pruning.',
     author='Ben Whetton',
-    author_email='Ben.Whetton@gmail.com',
+    author_email='',
     python_requires='>=3',
     install_requires=['keras>=2.0.7'],
     extras_require={'examples': ['pandas'], },
