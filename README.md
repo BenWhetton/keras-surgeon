@@ -1,4 +1,13 @@
-# Keras-surgeon
+# Tf-Keras-Surgeon
+Note: see Keras-Surgeon: https://github.com/BenWhetton/keras-surgeon
+
+## Introduction
+This is a port of Keras-Surgeon by BenWhetton to work with the new TF 2.0 tf.keras which has a few tweaks from normal keras (which causes bugs)
+
+This is not intended to do anything more than the original, so, most of the code and documentation will remain unchanged.
+
+## From Keras-Surgeon:
+# Keras-Surgeon
 
 ## Introduction
 Keras-surgeon provides simple methods for modifying trained 
