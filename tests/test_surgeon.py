@@ -18,10 +18,10 @@ from tensorflow.keras.layers import GaussianNoise, GaussianDropout, AlphaDropout
 from tensorflow.keras.layers import SimpleRNN, GRU, LSTM, BatchNormalization
 from numpy import random
 
-from kerassurgeon import operations
-from kerassurgeon import utils
-from kerassurgeon import Surgeon
-from kerassurgeon.utils import get_inbound_nodes, get_outbound_nodes
+from tfkerassurgeon import operations
+from tfkerassurgeon import utils
+from tfkerassurgeon import Surgeon
+from tfkerassurgeon.utils import get_inbound_nodes, get_outbound_nodes
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 

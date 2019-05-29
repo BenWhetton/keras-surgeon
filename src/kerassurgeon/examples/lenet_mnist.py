@@ -4,8 +4,8 @@ from tensorflow.keras import layers
 from tensorflow.keras import callbacks
 from tensorflow.examples.tutorials.mnist import input_data
 
-from kerassurgeon import identify
-from kerassurgeon.operations import delete_channels
+from tfkerassurgeon import identify
+from tfkerassurgeon.operations import delete_channels
 
 
 def main():

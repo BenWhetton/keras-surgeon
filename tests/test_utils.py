@@ -10,7 +10,7 @@ from tensorflow.keras.models import Sequential
 import numpy as np
 import pytest
 
-from kerassurgeon.utils import (
+from tfkerassurgeon.utils import (
     find_activation_layer,
     get_shallower_nodes,
     get_inbound_nodes,

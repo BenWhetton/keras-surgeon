@@ -1,4 +1,4 @@
-from kerassurgeon.surgeon import Surgeon
+from tfkerassurgeon.surgeon import Surgeon
 
 
 def delete_layer(model, layer, *, node_indices=None, copy=True):

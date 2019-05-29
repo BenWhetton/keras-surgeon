@@ -16,8 +16,8 @@ import pandas as pd
 import numpy as np
 import tensorflow as tf
 
-from kerassurgeon.identify import get_apoz
-from kerassurgeon import Surgeon
+from tfkerassurgeon.identify import get_apoz
+from tfkerassurgeon import Surgeon
 
 # dimensions of our images.
 img_width, img_height = 299, 299

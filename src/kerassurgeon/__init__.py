@@ -1,3 +1,3 @@
-from kerassurgeon.surgeon import Surgeon
+from tfkerassurgeon.surgeon import Surgeon
 
 __version__ = '0.1.3'

@@ -3,7 +3,7 @@ import numpy as np
 from tensorflow.keras import backend as k
 from tensorflow.keras.models import Model
 
-from kerassurgeon import utils
+from tfkerassurgeon import utils
 
 
 def get_apoz(model, layer, x_val, node_indices=None):
