@@ -19,6 +19,7 @@
     <VisualStudioVersion Condition=" '$(VisualStudioVersion)' == '' ">10.0</VisualStudioVersion>
   </PropertyGroup>
   <ItemGroup>
+    <Content Include="requirements.txt" />
     <Content Include="tox.ini" />
   </ItemGroup>
   <ItemGroup>
