@@ -5,13 +5,13 @@ inception_flowers_tune.py must be run first
 """
 import math
 
-from keras.applications import inception_v3
-from keras.preprocessing.image import ImageDataGenerator
-from keras.optimizers import SGD
-from keras.models import Model, load_model
-from keras.layers import Dense
-from keras.callbacks import CSVLogger
-import keras.backend as K
+from tensorflow.keras.applications import inception_v3
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from tensorflow.keras.optimizers import SGD
+from tensorflow.keras.models import Model, load_model
+from tensorflow.keras.layers import Dense
+from tensorflow.keras.callbacks import CSVLogger
+import tensorflow.kerasbackend as K
 import pandas as pd
 import numpy as np
 import tensorflow as tf

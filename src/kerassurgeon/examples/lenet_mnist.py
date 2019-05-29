@@ -1,7 +1,7 @@
-from keras.layers import Dense, Conv2D, MaxPool2D, Flatten
-from keras.models import Sequential
-from keras import layers
-from keras import callbacks
+from tensorflow.keras.layers import Dense, Conv2D, MaxPool2D, Flatten
+from tensorflow.keras.models import Sequential
+from tensorflow.keras import layers
+from tensorflow.keras import callbacks
 from tensorflow.examples.tutorials.mnist import input_data
 
 from kerassurgeon import identify

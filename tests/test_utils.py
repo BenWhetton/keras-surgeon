@@ -1,4 +1,4 @@
-from keras.layers import (
+from tensorflow.keras.layers import (
     Conv2D,
     Activation,
     MaxPool2D,
@@ -6,7 +6,7 @@ from keras.layers import (
     Dense,
     Input,
 )
-from keras.models import Sequential
+from tensorflow.keras.models import Sequential
 import numpy as np
 import pytest
 

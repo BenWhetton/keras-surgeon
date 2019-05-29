@@ -1,9 +1,9 @@
 import logging
 
 import numpy as np
-from keras.engine.topology import Node
-from keras.layers import BatchNormalization
-from keras.models import Model
+from tensorflow.keras.engine.topology import Node
+from tensorflow.keras.layers import BatchNormalization
+from tensorflow.keras.models import Model
 
 from kerassurgeon import utils
 from kerassurgeon.utils import get_inbound_nodes

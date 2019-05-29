@@ -23,12 +23,12 @@ There should be a total of 3170 training samples and 500 validation samples
 """
 
 import numpy as np
-from keras.applications import inception_v3
-from keras.preprocessing.image import ImageDataGenerator
-from keras.optimizers import SGD
-from keras.models import Model
-from keras.layers import Dense, Input
-from keras.callbacks import CSVLogger
+from tensorflow.keras.applications import inception_v3
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from tensorflow.keras.optimizers import SGD
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import Dense, Input
+from tensorflow.keras.callbacks import CSVLogger
 
 
 # dimensions of the images.

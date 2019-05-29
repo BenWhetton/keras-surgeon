@@ -1,7 +1,7 @@
 """Identify which channels to delete."""
 import numpy as np
-from keras import backend as k
-from keras.models import Model
+from tensorflow.keras import backend as k
+from tensorflow.keras.models import Model
 
 from kerassurgeon import utils
 
