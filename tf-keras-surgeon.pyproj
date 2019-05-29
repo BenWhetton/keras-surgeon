@@ -1,0 +1,48 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003" DefaultTargets="Build">
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <SchemaVersion>2.0</SchemaVersion>
+    <ProjectGuid>{b9b64076-5e19-4737-96e7-ecf45a459612}</ProjectGuid>
+    <ProjectHome />
+    <StartupFile>tests\test_utils.py</StartupFile>
+    <SearchPath />
+    <WorkingDirectory>.</WorkingDirectory>
+    <OutputPath>.</OutputPath>
+    <ProjectTypeGuids>{888888a0-9f3d-457c-b088-3a5042f75d52}</ProjectTypeGuids>
+    <LaunchProvider>Standard Python launcher</LaunchProvider>
+    <InterpreterId>Global|PythonCore|3.6</InterpreterId>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug'" />
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'" />
+  <PropertyGroup>
+    <VisualStudioVersion Condition=" '$(VisualStudioVersion)' == '' ">10.0</VisualStudioVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <Content Include="tox.ini" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="setup.py" />
+    <Compile Include="src\tfkerassurgeon\examples\inception_flowers_prune.py" />
+    <Compile Include="src\tfkerassurgeon\examples\inception_flowers_tune.py" />
+    <Compile Include="src\tfkerassurgeon\examples\lenet_mnist.py" />
+    <Compile Include="src\tfkerassurgeon\examples\__init__.py" />
+    <Compile Include="src\tfkerassurgeon\identify.py" />
+    <Compile Include="src\tfkerassurgeon\operations.py" />
+    <Compile Include="src\tfkerassurgeon\surgeon.py" />
+    <Compile Include="src\tfkerassurgeon\utils.py" />
+    <Compile Include="src\tfkerassurgeon\__init__.py" />
+    <Compile Include="tests\test_surgeon.py" />
+    <Compile Include="tests\test_utils.py" />
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="src\" />
+    <Folder Include="src\tfkerassurgeon\" />
+    <Folder Include="src\tfkerassurgeon\examples\" />
+    <Folder Include="tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <InterpreterReference Include="Global|PythonCore|3.6" />
+  </ItemGroup>
+  <Import Project="$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)\Python Tools\Microsoft.PythonTools.targets" />
+</Project>
