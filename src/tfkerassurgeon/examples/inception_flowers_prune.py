@@ -11,7 +11,7 @@ from tensorflow.python.keras.optimizers import SGD
 from tensorflow.python.keras.models import Model, load_model
 from tensorflow.python.keras.layers import Dense
 from tensorflow.python.keras.callbacks import CSVLogger
-import tensorflow.python.keras.backend as K
+#import tensorflow.python.keras.backend as K
 import pandas as pd
 import numpy as np
 import tensorflow as tf
@@ -107,7 +107,7 @@ def iterative_prune_model():
                            + 'percent')
         model.save(output_dir + checkpoint_name + '.h5')
         del model
-        K.clear_session()
+        tensorflow.python.keras.backend.clear_session()
         tf.reset_default_graph()
         model = load_model(output_dir + checkpoint_name + '.h5')
 
