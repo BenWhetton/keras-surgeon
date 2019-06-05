@@ -1,8 +1,8 @@
 """Utilities used across other modules."""
 import warnings
 import numpy as np
-from tensorflow.keras.layers import Layer
-from tensorflow.keras.activations import linear
+from tensorflow.python.keras.layers import Layer
+from tensorflow.python.keras.activations import linear
 
 
 def clean_copy(model):

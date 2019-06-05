@@ -1,9 +1,14 @@
-from tensorflow.keras.layers import Dense, Conv2D, MaxPool2D, Flatten
-from tensorflow.keras.models import Sequential
-from tensorflow.keras import layers
-from tensorflow.keras import callbacks
+from tensorflow.python.keras.layers import Dense, Conv2D, MaxPool2D, Flatten
+from tensorflow.python.keras.models import Sequential
+from tensorflow.python.keras import layers
+from tensorflow.python.keras import callbacks
 from tensorflow.examples.tutorials.mnist import input_data
 
+
+import sys
+sys.path.append("../../")
+
+import tfkerassurgeon
 from tfkerassurgeon import identify
 from tfkerassurgeon.operations import delete_channels
 
@@ -63,6 +68,7 @@ def main():
     layer_name = 'dense_1'
 
     while True:
+        #duh this just keeps going until it crashes
         layer = model.get_layer(name=layer_name)
         apoz = identify.get_apoz(model, layer, val_images)
         high_apoz_channels = identify.high_apoz(apoz)

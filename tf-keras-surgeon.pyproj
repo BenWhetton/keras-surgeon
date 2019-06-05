@@ -5,7 +5,7 @@
     <SchemaVersion>2.0</SchemaVersion>
     <ProjectGuid>{b9b64076-5e19-4737-96e7-ecf45a459612}</ProjectGuid>
     <ProjectHome />
-    <StartupFile>tests\test_utils.py</StartupFile>
+    <StartupFile>src\tfkerassurgeon\examples\lenet_mnist.py</StartupFile>
     <SearchPath />
     <WorkingDirectory>.</WorkingDirectory>
     <OutputPath>.</OutputPath>

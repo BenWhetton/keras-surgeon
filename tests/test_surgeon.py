@@ -3,19 +3,19 @@ import os
 import tensorflow as tf
 import pytest
 import numpy as np
-import tensorflow.kerasbackend as K
-from tensorflow.keras.models import Sequential, Model
-from tensorflow.keras.layers import Input, Dense, Flatten
-from tensorflow.keras.layers import Conv1D, MaxPool1D, Cropping1D, UpSampling1D
-from tensorflow.keras.layers import ZeroPadding1D, AveragePooling1D, GlobalAveragePooling1D
-from tensorflow.keras.layers import Conv2D, MaxPool2D, Cropping2D, UpSampling2D
-from tensorflow.keras.layers import ZeroPadding2D, AveragePooling2D, GlobalAveragePooling2D
-from tensorflow.keras.layers import Conv3D, MaxPool3D, Cropping3D, UpSampling3D
-from tensorflow.keras.layers import ZeroPadding3D, AveragePooling3D
-from tensorflow.keras.layers import Add, Multiply, Average, Maximum, Concatenate
-from tensorflow.keras.layers import LeakyReLU, ELU, ThresholdedReLU
-from tensorflow.keras.layers import GaussianNoise, GaussianDropout, AlphaDropout
-from tensorflow.keras.layers import SimpleRNN, GRU, LSTM, BatchNormalization
+import tensorflow.python.kerasbackend as K
+from tensorflow.python.keras.models import Sequential, Model
+from tensorflow.python.keras.layers import Input, Dense, Flatten
+from tensorflow.python.keras.layers import Conv1D, MaxPool1D, Cropping1D, UpSampling1D
+from tensorflow.python.keras.layers import ZeroPadding1D, AveragePooling1D, GlobalAveragePooling1D
+from tensorflow.python.keras.layers import Conv2D, MaxPool2D, Cropping2D, UpSampling2D
+from tensorflow.python.keras.layers import ZeroPadding2D, AveragePooling2D, GlobalAveragePooling2D
+from tensorflow.python.keras.layers import Conv3D, MaxPool3D, Cropping3D, UpSampling3D
+from tensorflow.python.keras.layers import ZeroPadding3D, AveragePooling3D
+from tensorflow.python.keras.layers import Add, Multiply, Average, Maximum, Concatenate
+from tensorflow.python.keras.layers import LeakyReLU, ELU, ThresholdedReLU
+from tensorflow.python.keras.layers import GaussianNoise, GaussianDropout, AlphaDropout
+from tensorflow.python.keras.layers import SimpleRNN, GRU, LSTM, BatchNormalization
 from numpy import random
 
 from tfkerassurgeon import operations

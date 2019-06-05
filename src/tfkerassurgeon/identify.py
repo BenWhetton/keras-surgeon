@@ -1,7 +1,7 @@
 """Identify which channels to delete."""
 import numpy as np
-from tensorflow.keras import backend as k
-from tensorflow.keras.models import Model
+from tensorflow.python.keras import backend as k
+from tensorflow.python.keras.models import Model
 
 from tfkerassurgeon import utils
 
@@ -56,7 +56,7 @@ def get_apoz(model, layer, x_val, node_indices=None):
     for node_index in node_indices:
         act_layer, act_index = utils.find_activation_layer(layer, node_index)
         # Get activations
-        if hasattr(x_val, "__iter__"):
+        if hasattr(x_val, "__iter__") and not isinstance(x_val, np.ndarray):
             temp_model = Model(model.inputs,
                                act_layer.get_output_at(act_index))
             a = temp_model.predict_generator(

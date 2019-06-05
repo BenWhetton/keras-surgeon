@@ -9,3 +9,5 @@ build
 dist
 *.egg-info
 *.swp
+.vs/**
+.suo
