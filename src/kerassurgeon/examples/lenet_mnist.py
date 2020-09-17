@@ -1,19 +1,28 @@
-from keras.layers import Dense, Conv2D, MaxPool2D, Flatten
-from keras.models import Sequential
-from keras import layers
-from keras import callbacks
-from tensorflow.examples.tutorials.mnist import input_data
+from tensorflow.keras.layers import Dense, Conv2D, MaxPool2D, Flatten
+from tensorflow.keras.models import Sequential
+from tensorflow.keras import layers
+from tensorflow.keras import callbacks
+from tensorflow.python.keras.datasets.mnist import load_data
+import numpy as np
 
 from kerassurgeon import identify
 from kerassurgeon.operations import delete_channels
 
 
+def to_onehot(a, n):
+    b = np.zeros((a.size, n+1))
+    b[np.arange(a.size), a] = 1
+    return b
+
+
 def main():
     training_verbosity = 2
     # Download data if needed and import.
-    mnist = input_data.read_data_sets('tempData', one_hot=True, reshape=False)
-    val_images = mnist.validation.images
-    val_labels = mnist.validation.labels
+    (train_images, train_labels), (val_images, val_labels) = load_data()
+    train_images = np.expand_dims(train_images, 3)
+    train_labels = to_onehot(train_labels, 9)
+    val_images = np.expand_dims(val_images, 3)
+    val_labels = to_onehot(val_labels, 9)
 
     # Create LeNet model
     model = Sequential()
@@ -29,6 +38,7 @@ def main():
     model.add(Flatten())
     model.add(Dense(500, activation='relu', name='dense_1'))
     model.add(Dense(10, activation='softmax', name='dense_2'))
+    model.summary()
 
     model.compile(optimizer='adam',
                   loss='categorical_crossentropy',
@@ -44,13 +54,13 @@ def main():
                                             patience=5,
                                             verbose=training_verbosity,
                                             mode='auto',
-                                            epsilon=0.0001,
+                                            min_delta=0.0001,
                                             cooldown=0,
                                             min_lr=0)
 
     # Train LeNet on MNIST
-    results = model.fit(mnist.train.images,
-                        mnist.train.labels,
+    results = model.fit(train_images,
+                        train_labels,
                         epochs=200,
                         batch_size=128,
                         verbose=2,
@@ -65,7 +75,7 @@ def main():
     while True:
         layer = model.get_layer(name=layer_name)
         apoz = identify.get_apoz(model, layer, val_images)
-        high_apoz_channels = identify.high_apoz(apoz)
+        high_apoz_channels = identify.high_apoz(apoz, "both")
         model = delete_channels(model, layer, high_apoz_channels)
 
         model.compile(optimizer='adam',
@@ -78,8 +88,8 @@ def main():
                               verbose=2)
         print('model loss after pruning: ', loss, '\n')
 
-        results = model.fit(mnist.train.images,
-                            mnist.train.labels,
+        results = model.fit(train_images,
+                            train_labels,
                             epochs=200,
                             batch_size=128,
                             verbose=training_verbosity,

@@ -1,8 +1,9 @@
 """Utilities used across other modules."""
-import warnings
 import numpy as np
-from keras.layers import Layer
-from keras.activations import linear
+from tensorflow.keras.layers import Layer
+from tensorflow.keras.activations import linear
+import tensorflow as tf
+from ._utils import node as node_utils
 
 
 def clean_copy(model):
@@ -37,7 +38,7 @@ def get_node_depth(model, node):
     Raises:
         KeyError: if the node is not contained in the model.
     """
-    for (depth, nodes_at_depth) in get_nodes_by_depth(model).items():
+    for (depth, nodes_at_depth) in model._nodes_by_depth.items():
         if node in nodes_at_depth:
             return depth
     raise KeyError('The node is not contained in the model.')
@@ -47,14 +48,14 @@ def check_for_layer_reuse(model, layers=None):
     """Returns True if any layers are reused, False if not."""
     if layers is None:
         layers = model.layers
-    return any([len(get_inbound_nodes(l)) > 1 for l in layers])
+    return any([len(l.inbound_nodes) > 1 for l in layers])
 
 
 def find_nodes_in_model(model, layer):
     """Find the indices of layer's inbound nodes which are in model"""
     model_nodes = get_model_nodes(model)
     node_indices = []
-    for i, node in enumerate(get_inbound_nodes(layer)):
+    for i, node in enumerate(layer.inbound_nodes):
         if node in model_nodes:
             node_indices.append(i)
     return node_indices
@@ -72,56 +73,24 @@ def check_nodes_in_model(model, nodes):
 
 def get_model_nodes(model):
     """Return all nodes in the model"""
-    return [node for v in get_nodes_by_depth(model).values() for node in v]
+    return [node for v in model._nodes_by_depth.values() for node in v]
 
 
 def get_shallower_nodes(node):
-    possible_nodes = get_outbound_nodes(node.outbound_layer)
+    possible_nodes = node.outbound_layer.outbound_nodes
     next_nodes = []
     for n in possible_nodes:
-        for i, node_index in enumerate(n.node_indices):
-            if node == get_inbound_nodes(n.inbound_layers[i])[node_index]:
-                next_nodes.append(n)
+        if node in get_node_inbound_nodes(n):
+            next_nodes.append(n)
     return next_nodes
 
 
 def get_node_inbound_nodes(node):
-    return [get_inbound_nodes(node.inbound_layers[i])[node_index]
-            for i, node_index in enumerate(node.node_indices)]
-
-
-def get_inbound_nodes(layer):
-    try:
-        return getattr(layer, '_inbound_nodes')
-    except AttributeError:
-        warnings.warn("Please update keras to version 2.1.3 or greater."
-                      "Support for earlier versions will be dropped in a "
-                      "future release.")
-        return layer.inbound_nodes
-
-
-def get_outbound_nodes(layer):
-    try:
-        return getattr(layer, '_outbound_nodes')
-    except AttributeError:
-        warnings.warn("Please update keras to version 2.1.3 or greater."
-                      "Support for earlier versions will be dropped in a "
-                      "future release.")
-        return layer.outbound_nodes
-
-
-def get_nodes_by_depth(model):
-    try:
-        return getattr(model, '_nodes_by_depth')
-    except AttributeError:
-        warnings.warn("Please update keras to version 2.1.3 or greater."
-                      "Support for earlier versions will be dropped in a "
-                      "future release.")
-        return model.nodes_by_depth
+    return node_utils.parent_nodes(node)
 
 
 def get_node_index(node):
-    for i, n in enumerate(get_inbound_nodes(node.outbound_layer)):
+    for i, n in enumerate(node.outbound_layer.inbound_nodes):
         if node == n:
             return i
 
@@ -135,7 +104,7 @@ def find_activation_layer(layer, node_index):
     """
     output_shape = layer.get_output_shape_at(node_index)
     maybe_layer = layer
-    node = get_inbound_nodes(maybe_layer)[node_index]
+    node = maybe_layer.inbound_nodes[node_index]
     # Loop will be broken by an error if an output layer is encountered
     while True:
         # If maybe_layer has a nonlinear activation function return it and its index
@@ -172,9 +141,20 @@ def sort_x_by_y(x, y):
 
 def single_element(x):
     """If x contains a single element, return it; otherwise return x"""
+    if isinstance(x, tf.Tensor):
+        return x
+
     if len(x) == 1:
         x = x[0]
     return x
+
+
+def get_one_tensor(x):
+    if isinstance(x, tf.Tensor):
+        return x
+
+    assert len(x) == 1
+    return x[0]
 
 
 def bool_to_index(x):

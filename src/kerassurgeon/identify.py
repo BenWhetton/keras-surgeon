@@ -1,7 +1,6 @@
 """Identify which channels to delete."""
 import numpy as np
-from keras import backend as k
-from keras.models import Model
+from tensorflow.keras.models import Model
 
 from kerassurgeon import utils
 
@@ -56,17 +55,9 @@ def get_apoz(model, layer, x_val, node_indices=None):
     for node_index in node_indices:
         act_layer, act_index = utils.find_activation_layer(layer, node_index)
         # Get activations
-        if hasattr(x_val, "__iter__"):
-            temp_model = Model(model.inputs,
-                               act_layer.get_output_at(act_index))
-            a = temp_model.predict_generator(
-                x_val, x_val.n // x_val.batch_size)
-        else:
-            get_activations = k.function(
-                [utils.single_element(model.inputs), k.learning_phase()],
-                [act_layer.get_output_at(act_index)])
-            a = get_activations([x_val, 0])[0]
-            # Ensure that the channels axis is last
+        temp_model = Model(model.inputs, act_layer.get_output_at(act_index))
+        a = temp_model.predict(x_val)
+
         if data_format == 'channels_first':
             a = np.swapaxes(a, 1, -1)
         # Flatten all except channels axis
@@ -101,5 +92,7 @@ def high_apoz(apoz, method="std", cutoff_std=1, cutoff_absolute=0.99):
         cutoff = cutoff_absolute
     else:
         cutoff = min([cutoff_absolute, apoz.mean() + apoz.std()*cutoff_std])
+
+    cutoff = min(cutoff, 1)
 
     return np.where(apoz >= cutoff)[0]

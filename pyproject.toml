@@ -1,0 +1,26 @@
+[tool.poetry]
+name = "keras-surgeon"
+version = "0.1.3"
+description = "A library for performing network surgery on trained Keras models. Useful for deep neural network pruning."
+authors = ["Ben Whetton <ben.whetton@gmail.com>"]
+license = "MIT"
+packages = [
+    { include = "kerassurgeon", from = "src" },
+    { include = "tests", format = "sdist"}
+]
+
+[tool.poetry.dependencies]
+python = "^3.6.1"
+tensorflow = "^2.0"
+pillow = {version = "^7.2.0", extras = ["examples"]}
+pandas = {version = "^1.1.2", extras = ["examples"]}
+keras = {version = "^2.4.3", extras = ["standalone-keras"]}
+pytest = {version = "^6.0.2", extras = ["test"]}
+
+[tool.poetry.dev-dependencies]
+pytest = "^6.0.2"
+tox = "^3.20.0"
+
+[build-system]
+requires = ["poetry>=0.12"]
+build-backend = "poetry.masonry.api"

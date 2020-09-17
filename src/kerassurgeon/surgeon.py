@@ -1,12 +1,12 @@
 import logging
 
 import numpy as np
-from keras.engine.topology import Node
-from keras.layers import BatchNormalization
-from keras.models import Model
+import tensorflow as tf
+from tensorflow.keras.layers import BatchNormalization
+from tensorflow.keras.models import Model
 
 from kerassurgeon import utils
-from kerassurgeon.utils import get_inbound_nodes
+from ._utils.tensor_dict import TensorDict
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -39,7 +39,7 @@ class Surgeon:
         self.nodes = []
         self._copy = copy
         self._finished_nodes = {}
-        self._replace_tensors = {}
+        self._replace_tensors = TensorDict()
         self._channels_map = {}
         self._new_layers_map = {}
         self._insert_layers_map = {}
@@ -129,7 +129,7 @@ class Surgeon:
         # Get nodes to be operated on for this job
         job_nodes = []
         for node_index in node_indices:
-            job_nodes.append(get_inbound_nodes(layer)[node_index])
+            job_nodes.append(layer.inbound_nodes[node_index])
         # Check that the nodes do not already have jobs assigned to them.
         if set(job_nodes).intersection(self.nodes):
             raise ValueError('Cannot apply several jobs to the same node.')
@@ -161,7 +161,7 @@ class Surgeon:
         output_nodes = []
         for output in self.model.outputs:
             layer, node_index, tensor_index = output._keras_history
-            output_nodes.append(get_inbound_nodes(layer)[node_index])
+            output_nodes.append(layer.inbound_nodes[node_index])
         new_outputs, _ = self._rebuild_graph(self.model.inputs, output_nodes)
         new_model = Model(self.model.inputs, new_outputs)
 
@@ -225,12 +225,16 @@ class Surgeon:
                 logging.debug('reached finished node: {0}'.format(node))
                 return self._finished_nodes[node]
             # Next check if one of the graph_inputs has been reached.
-            elif node_output in graph_inputs:
+            mask_map = TensorDict()
+            for input, mask in zip(graph_inputs, graph_input_masks):
+                mask_map[input] = mask
+
+            try:
+                output_mask = mask_map[node_output]
                 logging.debug('bottomed out at a model input')
-                output_mask = graph_input_masks[graph_inputs.index(node_output)]
                 return node_output, output_mask
-            # Otherwise recursively call this method on the inbound nodes.
-            else:
+            except KeyError:
+                # Otherwise recursively call this method on the inbound nodes.
                 inbound_nodes = utils.get_node_inbound_nodes(node)
                 logging.debug('inbound_layers: {0}'.format(
                     [node.outbound_layer.name for node in inbound_nodes]))
@@ -241,7 +245,14 @@ class Surgeon:
 
                 if all(i is None for i in inputs):
                     output = None
-                    output_mask = np.zeros(node.output_shapes[0][1:], dtype=bool)
+                    try:
+                        assert len(node.output_tensors) <= 1
+                    except AssertionError as e:
+                        raise e
+                    except:
+                        pass
+
+                    output_mask = np.zeros(node.output_tensors.shape[1:], dtype=bool)
                 elif any(i is None for i in inputs):
                     if node.outbound_layer.__class__.__name__ != 'Concatenate':
                         TypeError('Inputs can only be missing for concatenate layers.')
@@ -264,12 +275,12 @@ class Surgeon:
         # Call the recursive _rebuild_rec method to rebuild the submodel up to
         # each output layer
         outputs, output_masks = zip(*[_rebuild_rec(n) for n in output_nodes])
-        return outputs, output_masks
+        return utils.single_element(outputs), output_masks
 
     def _delete_layer(self, node, inputs, input_masks):
         """Skip adding node.outbound_layer when building the graph."""
         # Skip the deleted layer by replacing its outputs with it inputs
-        if len(inputs) >= 2:
+        if not isinstance(inputs, tf.Tensor) and len(inputs) >= 2:
             raise ValueError('Cannot insert new layer at node with multiple '
                              'inbound layers.')
         inputs = utils.single_element(inputs)
@@ -280,13 +291,13 @@ class Surgeon:
     def _insert_layer(self, node, inputs, input_masks, new_layer=None):
         """Insert new_layer into the graph before node.outbound_layer."""
         # This will not work for nodes with multiple inbound layers
-        if len(inputs) >= 2:
+        if not isinstance(inputs, tf.Tensor) and len(inputs) >= 2:
             raise ValueError('Cannot insert new layer at node with multiple '
                              'inbound layers.')
         # Call the new layer on the inbound layer's output
         new_output = new_layer(utils.single_element(inputs))
         # Replace the inbound layer's output with the new layer's output
-        old_output = node.input_tensors[0]
+        old_output = utils.get_one_tensor(node.input_tensors)
         input_masks = utils.single_element(input_masks)
         self._replace_tensors[old_output] = (new_output, input_masks)
 
@@ -370,7 +381,7 @@ class Surgeon:
 
         # If the layer is shared and has already been affected by this
         # operation, use the cached new layer.
-        if len(get_inbound_nodes(layer)) > 1 \
+        if len(layer.inbound_nodes) > 1 \
                 and layer in self._replace_layers_map.keys():
             return self._replace_layers_map[layer]
 
@@ -558,7 +569,8 @@ class Surgeon:
             # Get slice of mask with all singleton dimensions except
             # channels dimension
             index = [0] * (len(input_shape))
-            index[layer.axis] = slice(None)
+            assert len(layer.axis) == 1
+            index[layer.axis[0]] = slice(None)
             index = index[1:]
             # TODO: Maybe use channel indices everywhere instead of masks?
             channel_indices = np.where(inbound_masks[tuple(index)] == False)[0]
@@ -567,7 +579,8 @@ class Surgeon:
             new_layer = BatchNormalization.from_config(
                 layer.get_config())
             new_input_shape = list(input_shape)
-            new_input_shape[new_layer.axis] -= len(channel_indices)
+            assert len(new_layer.axis) == 1
+            new_input_shape[new_layer.axis[0]] -= len(channel_indices)
             new_layer.build(new_input_shape)
             new_layer.set_weights(weights)
 
@@ -586,7 +599,7 @@ class Surgeon:
             raise ValueError('"{0}" layers are currently '
                              'unsupported.'.format(layer_class))
 
-        if len(get_inbound_nodes(layer)) > 1 and new_layer != layer:
+        if len(layer.inbound_nodes) > 1 and new_layer != layer:
             self._replace_layers_map[layer] = (new_layer, outbound_mask)
 
         return new_layer, outbound_mask

@@ -1,4 +1,4 @@
-from keras.layers import (
+from tensorflow.keras.layers import (
     Conv2D,
     Activation,
     MaxPool2D,
@@ -6,14 +6,13 @@ from keras.layers import (
     Dense,
     Input,
 )
-from keras.models import Sequential
+from tensorflow.keras.models import Sequential
 import numpy as np
 import pytest
 
 from kerassurgeon.utils import (
     find_activation_layer,
     get_shallower_nodes,
-    get_inbound_nodes,
     MeanCalculator,
 )
 
@@ -26,21 +25,21 @@ def test_get_shallower_nodes():
     dense_3 = Dense(5)
 
     x = dense_1(input_1)
-    node_1_1 = get_inbound_nodes(dense_1)[0]
+    node_1_1 = dense_1.inbound_nodes[0]
     y = dense_1(input_2)
-    node_2_1 = get_inbound_nodes(dense_1)[1]
+    node_2_1 = dense_1.inbound_nodes[1]
     assert node_1_1 != node_2_1
 
     output_1 = dense_2(x)
-    node_1_2 = get_inbound_nodes(dense_2)[0]
+    node_1_2 = dense_2.inbound_nodes[0]
     output_2 = dense_3(y)
-    node_2_2 = get_inbound_nodes(dense_3)[0]
+    node_2_2 = dense_3.inbound_nodes[0]
 
     assert get_shallower_nodes(node_1_1) == [node_1_2]
     assert get_shallower_nodes(node_2_1) == [node_2_2]
 
     output_3 = dense_2(y)
-    node_2_2_2 = get_inbound_nodes(dense_2)[1]
+    node_2_2_2 = dense_2.inbound_nodes[1]
 
     assert get_shallower_nodes(node_2_1) == [node_2_2, node_2_2_2]
 

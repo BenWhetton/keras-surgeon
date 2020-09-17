@@ -5,19 +5,21 @@ inception_flowers_tune.py must be run first
 """
 import math
 
-from keras.applications import inception_v3
-from keras.preprocessing.image import ImageDataGenerator
-from keras.optimizers import SGD
-from keras.models import Model, load_model
-from keras.layers import Dense
-from keras.callbacks import CSVLogger
-import keras.backend as K
+from tensorflow.keras.applications import inception_v3
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from tensorflow.keras.optimizers import SGD
+from tensorflow.keras.models import Model, load_model
+from tensorflow.keras.layers import Dense
+from tensorflow.keras.callbacks import CSVLogger
+import tensorflow.keras.backend as K
 import pandas as pd
 import numpy as np
 import tensorflow as tf
 
 from kerassurgeon.identify import get_apoz
 from kerassurgeon import Surgeon
+
+
 
 # dimensions of our images.
 img_width, img_height = 299, 299
@@ -108,7 +110,7 @@ def iterative_prune_model():
         model.save(output_dir + checkpoint_name + '.h5')
         del model
         K.clear_session()
-        tf.reset_default_graph()
+        tf.compat.v1.reset_default_graph()
         model = load_model(output_dir + checkpoint_name + '.h5')
 
         # Re-train the model

@@ -1,27 +1,27 @@
 import os
+import json
 
 import tensorflow as tf
 import pytest
 import numpy as np
-import keras.backend as K
-from keras.models import Sequential, Model
-from keras.layers import Input, Dense, Flatten
-from keras.layers import Conv1D, MaxPool1D, Cropping1D, UpSampling1D
-from keras.layers import ZeroPadding1D, AveragePooling1D, GlobalAveragePooling1D
-from keras.layers import Conv2D, MaxPool2D, Cropping2D, UpSampling2D
-from keras.layers import ZeroPadding2D, AveragePooling2D, GlobalAveragePooling2D
-from keras.layers import Conv3D, MaxPool3D, Cropping3D, UpSampling3D
-from keras.layers import ZeroPadding3D, AveragePooling3D
-from keras.layers import Add, Multiply, Average, Maximum, Concatenate
-from keras.layers import LeakyReLU, ELU, ThresholdedReLU
-from keras.layers import GaussianNoise, GaussianDropout, AlphaDropout
-from keras.layers import SimpleRNN, GRU, LSTM, BatchNormalization
+import tensorflow.keras.backend as K
+from tensorflow.keras.models import Sequential, Model
+from tensorflow.keras.layers import Input, Dense, Flatten
+from tensorflow.keras.layers import Conv1D, MaxPool1D, Cropping1D, UpSampling1D
+from tensorflow.keras.layers import ZeroPadding1D, AveragePooling1D, GlobalAveragePooling1D
+from tensorflow.keras.layers import Conv2D, MaxPool2D, Cropping2D, UpSampling2D
+from tensorflow.keras.layers import ZeroPadding2D, AveragePooling2D, GlobalAveragePooling2D
+from tensorflow.keras.layers import Conv3D, MaxPool3D, Cropping3D, UpSampling3D
+from tensorflow.keras.layers import ZeroPadding3D, AveragePooling3D
+from tensorflow.keras.layers import Add, Multiply, Average, Maximum, Concatenate
+from tensorflow.keras.layers import LeakyReLU, ELU, ThresholdedReLU
+from tensorflow.keras.layers import GaussianNoise, GaussianDropout, AlphaDropout
+from tensorflow.keras.layers import SimpleRNN, GRU, LSTM, BatchNormalization
 from numpy import random
 
 from kerassurgeon import operations
 from kerassurgeon import utils
 from kerassurgeon import Surgeon
-from kerassurgeon.utils import get_inbound_nodes, get_outbound_nodes
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
@@ -33,7 +33,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 def clear_tf():
     yield
     K.clear_session()
-    tf.reset_default_graph()
+    tf.compat.v1.reset_default_graph()
 
 
 @pytest.fixture(params=['channels_first', 'channels_last'])
@@ -47,7 +47,7 @@ def channel_index(request):
 
 
 @pytest.fixture
-def model_1():
+def model_2():
     """Basic Lenet-style model test fixture with minimal channels"""
     model = Sequential()
     model.add(Conv2D(2,
@@ -59,13 +59,6 @@ def model_1():
     model.add(Flatten())
     model.add(Dense(2, activation='relu'))
     model.add(Dense(10, activation='relu'))
-    return model
-
-
-@pytest.fixture
-def model_2():
-    """Basic Lenet-style model test fixture with minimal channels"""
-    model = model_1()
     return Model(model.inputs, model.outputs)
 
 
@@ -73,7 +66,7 @@ def test_rebuild_submodel(model_2):
     output_nodes = []
     for output in model_2.outputs:
         layer, node_index, tensor_index = output._keras_history
-        output_nodes.append(get_inbound_nodes(layer)[node_index])
+        output_nodes.append(layer.inbound_nodes[node_index])
     surgeon = Surgeon(model_2)
     outputs, _ = surgeon._rebuild_graph(model_2.inputs, output_nodes)
     new_model = Model(model_2.inputs, outputs)
@@ -843,7 +836,7 @@ def test_delete_channels_downstream_sharing():
     config_1 = model_2.get_config()
     config_2 = model_2_exp.get_config()
     config_2['name'] = config_1['name']  # make the config names identical
-    assert config_1 == config_2
+    assert json.dumps(config_1) == json.dumps(config_2)
 
 
 def test_delete_all_channels_in_branch():
@@ -867,7 +860,7 @@ def test_delete_all_channels_in_branch():
     config_1 = model_2.get_config()
     config_2 = model_2_exp.get_config()
     config_2['name'] = config_1['name']  # make the config names identical
-    assert config_1 == config_2
+    assert json.dumps(config_1) == json.dumps(config_2)
 
 
 def test_delete_all_channels_in_long_branch():
@@ -900,17 +893,8 @@ def compare_models(model_1, model_2):
     config_1 = model_1.get_config()
     config_2 = model_2.get_config()
     config_2['name'] = config_1['name']  # make the config names identical
-    config_match = (config_1 == config_2)
-    weights_match = (all([np.array_equal(weight_1, weight_2)
-                          for (weight_1, weight_2) in
-                          zip(model_1.get_weights(), model_2.get_weights())]))
-    return config_match and weights_match
-
-
-def compare_models_seq(model_1, model_2):
-    config_1 = model_1.get_config()
-    config_2 = model_2.get_config()
-    config_match = (config_1 == config_2)
+    # json string dump avoids differences between tuples and lists
+    config_match = json.dumps(config_1) == json.dumps(config_2)
     weights_match = (all([np.array_equal(weight_1, weight_2)
                           for (weight_1, weight_2) in
                           zip(model_1.get_weights(), model_2.get_weights())]))
