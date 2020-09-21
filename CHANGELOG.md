@@ -4,7 +4,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.0] - 2020-09-21
+### Added
+- Supports `tensorflow.keras` (standalone keras models are still supported)
+- Supports Tensorflow v2 and above
+- [Poetry] is now used for dependency management and packaging.
+
+### Removed
+- No longer supports Tensorflow v1
+- No longer supports Python 3.5, requires >=3.6.1
+- Removed utils functions:
+  - get_node_inbound_nodes
+  - get_inbound_nodes
+  - get_outbound_nodes
+  - get_nodes_by_depth
 
 ## [0.1.3] - 2018-10-22
 ### Fixed
@@ -48,7 +61,5 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Added memory cleanup to `inception_flowers_prune` example; prevents memory leak.
 
 
-
-
 [Unreleased]: https://github.com/BenWhetton/keras-surgeon/compare/0.1.0...HEAD
-[0.1.0]: https://github.com/olivierlacan/keep-a-changelog/compare/0.0.1...0.1.0
+[Poetry]: https://python-poetry.org/
