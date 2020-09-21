@@ -80,13 +80,9 @@ def get_shallower_nodes(node):
     possible_nodes = node.outbound_layer.outbound_nodes
     next_nodes = []
     for n in possible_nodes:
-        if node in get_node_inbound_nodes(n):
+        if node in node_utils.parent_nodes(n):
             next_nodes.append(n)
     return next_nodes
-
-
-def get_node_inbound_nodes(node):
-    return node_utils.parent_nodes(node)
 
 
 def get_node_index(node):

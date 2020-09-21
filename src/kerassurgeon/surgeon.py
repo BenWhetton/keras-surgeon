@@ -7,6 +7,7 @@ from tensorflow.keras.models import Model
 
 from kerassurgeon import utils
 from ._utils.tensor_dict import TensorDict
+from ._utils import node as node_utils
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -149,7 +150,7 @@ class Surgeon:
                               key=lambda x: utils.get_node_depth(self.model, x))
         for node in sorted_nodes:
             # Rebuild submodel up to this node
-            sub_output_nodes = utils.get_node_inbound_nodes(node)
+            sub_output_nodes = node_utils.parent_nodes(node)
             outputs, output_masks = self._rebuild_graph(self.model.inputs,
                                                         sub_output_nodes)
 
@@ -235,7 +236,7 @@ class Surgeon:
                 return node_output, output_mask
             except KeyError:
                 # Otherwise recursively call this method on the inbound nodes.
-                inbound_nodes = utils.get_node_inbound_nodes(node)
+                inbound_nodes = node_utils.parent_nodes(node)
                 logging.debug('inbound_layers: {0}'.format(
                     [node.outbound_layer.name for node in inbound_nodes]))
                 # Recursively rebuild the model up to `node`s inbound nodes to
