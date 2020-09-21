@@ -80,9 +80,7 @@ def iterative_prune_model():
     val_steps = validation_generator.n // validation_generator.batch_size
 
     # Evaluate the model performance before pruning
-    loss = model.evaluate_generator(validation_generator,
-                                    validation_generator.n //
-                                    validation_generator.batch_size)
+    loss = model.evaluate(validation_generator)
     print('original model validation loss: ', loss[0], ', acc: ', loss[1])
 
     total_channels = get_total_channels(model)
@@ -120,18 +118,14 @@ def iterative_prune_model():
         checkpoint_name = ('inception_flowers_pruning_' + str(percent_pruned)
                            + 'percent')
         csv_logger = CSVLogger(output_dir + checkpoint_name + '.csv')
-        model.fit_generator(train_generator,
-                            steps_per_epoch=train_steps,
-                            epochs=epochs,
-                            validation_data=validation_generator,
-                            validation_steps=val_steps,
-                            workers=4,
-                            callbacks=[csv_logger])
+        model.fit(train_generator,
+                  epochs=epochs,
+                  validation_data=validation_generator,
+                  workers=4,
+                  callbacks=[csv_logger])
 
     # Evaluate the final model performance
-    loss = model.evaluate_generator(validation_generator,
-                                    validation_generator.n //
-                                    validation_generator.batch_size)
+    loss = model.evaluate(validation_generator)
     print('pruned model loss: ', loss[0], ', acc: ', loss[1])
 
 

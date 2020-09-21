@@ -55,38 +55,36 @@ def save_bottleneck_features():
                                      pooling='avg')
 
     # Save the bottleneck features for the training data set
-    datagen = ImageDataGenerator(preprocessing_function=
-                                 inception_v3.preprocess_input)
-    generator = datagen.flow_from_directory(train_data_dir,
+    datagen = ImageDataGenerator(
+        preprocessing_function=inception_v3.preprocess_input)
+    train_data = datagen.flow_from_directory(train_data_dir,
                                             target_size=(img_width, img_height),
                                             batch_size=batch_size,
                                             class_mode='sparse',
                                             shuffle=False)
-    features = model.predict_generator(generator, nb_train_samples // batch_size)
-    labels = np.eye(generator.num_classes, dtype='uint8')[generator.classes]
-    labels = labels[0:(nb_train_samples // batch_size) * batch_size]
-    np.save(open(output_dir+'bottleneck_features_train.npy', 'wb'), features)
-    np.save(open(output_dir+'bottleneck_labels_train.npy', 'wb'), labels)
+    features = model.predict(train_data)
+    labels = np.eye(train_data.num_classes, dtype='uint8')[train_data.classes]
+    np.save(output_dir+'bottleneck_features_train.npy', features)
+    np.save(output_dir+'bottleneck_labels_train.npy', labels)
 
     # Save the bottleneck features for the validation data set
-    generator = datagen.flow_from_directory(validation_data_dir,
+    val_data = datagen.flow_from_directory(validation_data_dir,
                                             target_size=(img_width, img_height),
                                             batch_size=batch_size,
                                             class_mode=None,
                                             shuffle=False)
-    features = model.predict_generator(generator, nb_validation_samples // batch_size)
-    labels = np.eye(generator.num_classes, dtype='uint8')[generator.classes]
-    labels = labels[0:(nb_validation_samples // batch_size) * batch_size]
-    np.save(open(output_dir+'bottleneck_features_validation.npy', 'wb'), features)
-    np.save(open(output_dir+'bottleneck_labels_validation.npy', 'wb'), labels)
+    features = model.predict(val_data)
+    labels = np.eye(val_data.num_classes, dtype='uint8')[val_data.classes]
+    np.save(output_dir+'bottleneck_features_validation.npy', features)
+    np.save(output_dir+'bottleneck_labels_validation.npy', labels)
 
 
 def train_top_model():
     # Load the bottleneck features and labels
-    train_features = np.load(open(output_dir+'bottleneck_features_train.npy', 'rb'))
-    train_labels = np.load(open(output_dir+'bottleneck_labels_train.npy', 'rb'))
-    validation_features = np.load(open(output_dir+'bottleneck_features_validation.npy', 'rb'))
-    validation_labels = np.load(open(output_dir+'bottleneck_labels_validation.npy', 'rb'))
+    train_features = np.load(output_dir+'bottleneck_features_train.npy')
+    train_labels = np.load(output_dir+'bottleneck_labels_train.npy')
+    validation_features = np.load(output_dir+'bottleneck_features_validation.npy')
+    validation_labels = np.load(output_dir+'bottleneck_labels_validation.npy')
 
     # Create the top model for the inception V3 network, a single Dense layer
     # with softmax activation.
@@ -159,19 +157,16 @@ def tune_model():
         batch_size=batch_size,
         class_mode='categorical')
 
-    loss = model.evaluate_generator(validation_generator,
-                                    nb_validation_samples//batch_size)
+    loss = model.evaluate(validation_generator)
     print('Model validation performance before fine-tuning:', loss)
 
     csv_logger = CSVLogger(output_dir+'model_tuning.csv')
     # fine-tune the model
-    model.fit_generator(train_generator,
-                        steps_per_epoch=nb_train_samples//batch_size,
-                        epochs=tune_epochs,
-                        validation_data=validation_generator,
-                        validation_steps=nb_validation_samples//batch_size,
-                        workers=4,
-                        callbacks=[csv_logger])
+    model.fit(train_generator,
+              epochs=tune_epochs,
+              validation_data=validation_generator,
+              workers=4,
+              callbacks=[csv_logger])
     model.save_weights(tuned_weights_path)
 
 
