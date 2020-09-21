@@ -10,3 +10,4 @@ dist
 *.egg-info
 *.swp
 poetry.lock
+.inception_flowers_data/

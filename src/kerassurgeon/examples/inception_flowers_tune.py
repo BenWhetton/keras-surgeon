@@ -34,7 +34,7 @@ from tensorflow.keras.callbacks import CSVLogger
 # dimensions of the images.
 img_width, img_height = 299, 299
 
-output_dir = 'inception_flowers/'
+output_dir = '.inception_flowers_data/'
 train_data_dir = output_dir+'data/train/'
 validation_data_dir = output_dir+'data/validation/'
 top_model_weights_path = output_dir+'top_model_weights.h5'
