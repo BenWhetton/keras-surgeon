@@ -1,3 +1,8 @@
 from kerassurgeon.surgeon import Surgeon
 
-__version__ = '0.1.3'
+from importlib_metadata import version
+
+try:
+    __version__ = version(__name__)
+except:
+    pass

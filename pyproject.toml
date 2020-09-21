@@ -16,6 +16,7 @@ pillow = {version = "^7.2.0", extras = ["examples"]}
 pandas = {version = "^1.1.2", extras = ["examples"]}
 keras = {version = "^2.4.3", extras = ["standalone-keras"]}
 pytest = {version = "^6.0.2", extras = ["test"]}
+importlib-metadata = "^1.7.0"
 
 [tool.poetry.dev-dependencies]
 pytest = "^6.0.2"
