@@ -2,7 +2,8 @@ on:
   push:
     branches: [master]
   pull_request:
-
+  # Allow manual runs of the Github Action
+  workflow_dispatch:
 
 name: Continuous integration
 
