@@ -12,9 +12,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: [3.6]
         os: [ubuntu-18.04, macos-latest, windows-latest]
-        tf2_version: [0,1,2,3]
+        python-version: [3.6]
+        tf2_version: [tf2_0, tf2_1, tf2_2, tf2_3]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v2
@@ -29,4 +29,4 @@ jobs:
         run: poetry install
 
       - name: Run tox
-        run: poetry run tox -e py36-tf2_${{ matrix.tf2_version }}
+        run: poetry run tox -e py36-${{ matrix.tf2_version }}
