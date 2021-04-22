@@ -1,0 +1,32 @@
+on:
+  push:
+    branches: [master]
+  pull_request:
+  # Allow manual runs of the Github Action
+  workflow_dispatch:
+
+name: Continuous integration
+
+jobs:
+  ci:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-18.04, macos-latest, windows-latest]
+        python-version: [3.6]
+        tf2_version: [tf2_0, tf2_1, tf2_2, tf2_3]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-python@v2
+        with:
+          python-version: ${{ matrix.python-version }}
+      - uses: abatilo/actions-poetry@v2.0.0
+        with:
+          poetry-version: 1.1.6
+
+      - name: Install deps and package
+        run: poetry install
+
+      - name: Run tox
+        run: poetry run tox -e py36-${{ matrix.tf2_version }}
