@@ -2,6 +2,7 @@
 import numpy as np
 from tensorflow.keras.layers import Layer
 from tensorflow.keras.activations import linear
+from tensorflow.python.keras.engine import keras_tensor
 import tensorflow as tf
 from ._utils import node as node_utils
 
@@ -137,20 +138,30 @@ def sort_x_by_y(x, y):
 
 def single_element(x):
     """If x contains a single element, return it; otherwise return x"""
-    if isinstance(x, tf.Tensor):
+
+    if isinstance(x, (tf.Tensor, keras_tensor.KerasTensor)): 
         return x
 
-    if len(x) == 1:
-        x = x[0]
+    if isinstance(x, list):
+        if len(x) == 1:
+            return x[0]
+
+    if isinstance(x, tuple):
+        return x[0]
+
     return x
 
 
 def get_one_tensor(x):
-    if isinstance(x, tf.Tensor):
+
+    if isinstance(x, (tf.Tensor, keras_tensor.KerasTensor)): 
         return x
 
-    assert len(x) == 1
-    return x[0]
+    if isinstance(x, list):
+        if len(x) == 1:
+            return x[0]
+
+    return x
 
 
 def bool_to_index(x):
