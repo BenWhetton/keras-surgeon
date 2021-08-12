@@ -441,7 +441,7 @@ class Surgeon:
                              'MaxPooling3D',
                              'AveragePooling1D', 'AveragePooling2D',
                              'AveragePooling3D'):
-            index = [slice(None, x, None) for x in output_shape[1:]]
+            index = [slice(None, x, None) for x in layer.output_shape[1:]]
             if data_format == 'channels_first':
                 index[0] = slice(None)
             elif data_format == 'channels_last':
