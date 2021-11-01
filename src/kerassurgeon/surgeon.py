@@ -4,6 +4,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.keras.layers import BatchNormalization
 from tensorflow.keras.models import Model
+import tensorflow_addons as tfa
 
 from kerassurgeon import utils
 from ._utils.tensor_dict import TensorDict
@@ -585,7 +586,28 @@ class Surgeon:
             new_input_shape[new_layer.axis[0]] -= len(channel_indices)
             new_layer.build(new_input_shape)
             new_layer.set_weights(weights)
-
+            
+        elif layer_class == 'GroupNormalization':
+            outbound_mask = inbound_masks
+            index = [0] * (len(input_shape))
+            axis = layer.axis
+            if axis < 0:
+                axis = axis % len(input_shape)
+            index[axis] = slice(None)
+            index = index[1:]
+            channel_indices = np.where(inbound_masks[tuple(index)] == False)[0]
+            weights = [np.delete(w, channel_indices, axis=-1)
+                       for w in layer.get_weights()]
+            new_layer = tfa.layers.GroupNormalization.from_config(
+                layer.get_config())
+            new_input_shape = list(input_shape)
+            axis = new_layer.axis
+            if axis < 0:
+                axis = axis % len(input_shape)
+            new_input_shape[axis] -= len(channel_indices)
+            new_layer.build(new_input_shape)
+            new_layer.set_weights(weights)
+            
         else:
             # Not implemented:
             # - Lambda
