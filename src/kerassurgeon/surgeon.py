@@ -4,7 +4,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.keras.layers import BatchNormalization
 from tensorflow.keras.models import Model
-import tensorflow_addons as tfs
+import tensorflow_addons as tfa
 
 from kerassurgeon import utils
 from ._utils.tensor_dict import TensorDict
