@@ -3,6 +3,7 @@ import numpy as np
 from tensorflow.keras.layers import Layer
 from tensorflow.keras.activations import linear
 import tensorflow as tf
+import keras
 from ._utils import node as node_utils
 
 
@@ -137,7 +138,7 @@ def sort_x_by_y(x, y):
 
 def single_element(x):
     """If x contains a single element, return it; otherwise return x"""
-    if isinstance(x, tf.Tensor):
+    if isinstance(x, (tf.Tensor, keras.engine.keras_tensor.KerasTensor)):
         return x
 
     if len(x) == 1:
