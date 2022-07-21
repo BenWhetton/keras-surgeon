@@ -17,6 +17,8 @@ from tensorflow.keras.layers import Add, Multiply, Average, Maximum, Concatenate
 from tensorflow.keras.layers import LeakyReLU, ELU, ThresholdedReLU
 from tensorflow.keras.layers import GaussianNoise, GaussianDropout, AlphaDropout
 from tensorflow.keras.layers import SimpleRNN, GRU, LSTM, BatchNormalization
+from tensorflow.keras.layers import ReLU
+
 from numpy import random
 
 from kerassurgeon import operations
@@ -388,6 +390,7 @@ def test_delete_channels_advanced_activations(channel_index, data_format):
     layer_test_helper_flatten_2d(LeakyReLU(), channel_index, data_format)
     layer_test_helper_flatten_2d(ELU(), channel_index, data_format)
     layer_test_helper_flatten_2d(ThresholdedReLU(), channel_index, data_format)
+    layer_test_helper_flatten_2d(ReLU(), channel_index, data_format)
 
 
 def test_delete_channels_noise(channel_index, data_format):
